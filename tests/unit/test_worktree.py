@@ -85,3 +85,12 @@ def test_handoff_save_and_resume_verification(tmp_path):
     # Invalidate if base sha changed
     with pytest.raises(HandoffVerificationError, match="Base commit moved"):
         mgr.verify_resume_preflight(task_id, spec_digest, "different" + "b" * 31)
+
+    # Candidate evaluation verification
+    valid_res = mgr.verify_candidate_evaluation(task_id, head_sha)
+    assert valid_res["head_sha"] == head_sha
+
+    # Invalidate if candidate SHA changed (stale evidence)
+    with pytest.raises(HandoffVerificationError, match="Stale evidence rejected"):
+        mgr.verify_candidate_evaluation(task_id, "different" + "c" * 31)
+
