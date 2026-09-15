@@ -69,6 +69,13 @@ class DAGScheduler:
             for dep in dependents:
                 self.task_statuses[dep] = TaskStatus.BLOCKED
 
+    def retry_failed_task(self, task_id: str) -> None:
+        """Reset a failed task back to READY if eligible for retry."""
+        if self.task_statuses.get(task_id) != TaskStatus.FAILED:
+            raise ValueError(f"Task {task_id} is not in FAILED state (status={self.task_statuses.get(task_id)})")
+        self.task_statuses[task_id] = TaskStatus.READY
+
+
     def get_dispatchable_tasks(self) -> list[str]:
         """Calculate tasks that are ready to be dispatched:
         1. Current status is PROPOSED or READY.

@@ -128,3 +128,18 @@ def test_failure_blocks_dependents_preserves_independent():
     scheduler.update_task_status("TASK-C", TaskStatus.DONE)
     assert scheduler.task_statuses["TASK-C"] == TaskStatus.DONE
     assert scheduler.get_dispatchable_tasks() == []
+
+
+def test_retry_failed_task_allows_redispatch():
+    tasks = [
+        make_task("TASK-A"),
+    ]
+    scheduler = DAGScheduler(tasks, max_workers=2)
+    scheduler.dispatch("TASK-A")
+    scheduler.update_task_status("TASK-A", TaskStatus.FAILED)
+    assert scheduler.get_dispatchable_tasks() == []
+
+    # Retry resets to READY
+    scheduler.retry_failed_task("TASK-A")
+    assert scheduler.get_dispatchable_tasks() == ["TASK-A"]
+
