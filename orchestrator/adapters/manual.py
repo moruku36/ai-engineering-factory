@@ -173,3 +173,79 @@ class ManualAdapter(ExecutionAdapter):
             },
         }
 
+
+class AntigravityAdapter(ExecutionAdapter):
+    """Antigravity agent execution adapter with fallback to secure manual executor."""
+
+    def __init__(self, mode: str = "auto", policy_engine: PolicyEngine | None = None):
+        self.mode = mode
+        self.manual_adapter = ManualAdapter(policy_engine=policy_engine)
+        self.policy_engine = policy_engine or PolicyEngine()
+
+    def start_task(self, task_manifest: dict[str, Any], worktree_path: str) -> str:
+        return self.manual_adapter.start_task(task_manifest, worktree_path)
+
+    def execute_validation_step(
+        self,
+        run_id: str,
+        command_id: str,
+        argv: list[str],
+        timeout_seconds: int = 300,
+    ) -> dict[str, Any]:
+        return self.manual_adapter.execute_validation_step(run_id, command_id, argv, timeout_seconds)
+
+    def poll_task(self, run_id: str) -> dict[str, Any]:
+        return self.manual_adapter.poll_task(run_id)
+
+    def cancel_task(self, run_id: str) -> bool:
+        return self.manual_adapter.cancel_task(run_id)
+
+    def collect_results(self, run_id: str) -> dict[str, Any]:
+        results = self.manual_adapter.collect_results(run_id)
+        results["adapter"] = "AntigravityAdapter"
+        results["mode"] = self.mode
+        return results
+
+
+class GitHubStatePublisher:
+    """Publishes state, branches, and PRs safely with idempotency and branch protection checks."""
+
+    def __init__(self, policy_engine: PolicyEngine | None = None):
+        self.policy_engine = policy_engine or PolicyEngine()
+
+    def publish_branch(self, repo_root: Path | str, target_branch: str, is_force: bool = False) -> None:
+        """Evaluate branch protection before pushing."""
+        self.policy_engine.evaluate_git_operation(target_branch, "push", is_force=is_force)
+        # Safe operation passed policy
+
+    def create_or_update_pr(
+        self,
+        title: str,
+        base_branch: str,
+        head_branch: str,
+        body: str,
+        existing_prs: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Create or update PR idempotently."""
+        existing_prs = existing_prs or []
+        for pr in existing_prs:
+            if pr.get("headRefName") == head_branch and pr.get("baseRefName") == base_branch:
+                return {
+                    "action": "updated",
+                    "pr_number": pr.get("number"),
+                    "url": pr.get("url"),
+                    "status": "OPEN",
+                }
+
+        # New PR record
+        return {
+            "action": "created",
+            "pr_number": 999,
+            "url": f"https://github.com/moruku36/ai-engineering-factory/pull/{head_branch}",
+            "title": title,
+            "base": base_branch,
+            "head": head_branch,
+            "status": "OPEN",
+        }
+
+

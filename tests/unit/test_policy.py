@@ -4,7 +4,11 @@ import sys
 
 import pytest
 
-from orchestrator.adapters.manual import ManualAdapter
+from orchestrator.adapters.manual import (
+    AntigravityAdapter,
+    GitHubStatePublisher,
+    ManualAdapter,
+)
 from orchestrator.core.policy import (
     ApprovalRequiredError,
     CommandNotAllowedError,
@@ -108,4 +112,44 @@ def test_manual_adapter_integration(tmp_path):
     assert adapter.cancel_task(run_id) is True
     res = adapter.collect_results(run_id)
     assert res["status"] == "CANCELLED"
+
+
+def test_antigravity_adapter(tmp_path):
+    manifest = {
+        "id": "AUT-001",
+        "output_artifacts": [],
+    }
+    adapter = AntigravityAdapter(mode="auto")
+    run_id = adapter.start_task(manifest, str(tmp_path))
+
+    val = adapter.execute_validation_step(run_id, "python", [sys.executable, "-c", "exit(0)"])
+    assert val["status"] == "PASS"
+
+    res = adapter.collect_results(run_id)
+    assert res["adapter"] == "AntigravityAdapter"
+    assert res["mode"] == "auto"
+    assert res["status"] == "SUCCESS"
+
+
+def test_github_state_publisher_idempotency():
+    publisher = GitHubStatePublisher()
+
+    # Deny direct push to main branch
+    with pytest.raises(HardDenyViolationError):
+        publisher.publish_branch(".", target_branch="main", is_force=False)
+
+    # Idempotent PR update
+    existing = [
+        {"number": 42, "url": "https://github.com/moruku36/ai-engineering-factory/pull/42", "headRefName": "phase/p4-automation", "baseRefName": "main"}
+    ]
+    res = publisher.create_or_update_pr(
+        title="feat: Phase 4",
+        base_branch="main",
+        head_branch="phase/p4-automation",
+        body="test",
+        existing_prs=existing,
+    )
+    assert res["action"] == "updated"
+    assert res["pr_number"] == 42
+
 
