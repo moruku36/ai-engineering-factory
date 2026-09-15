@@ -19,5 +19,8 @@
   },
   "verification_status": "PASS (Lint, Secret Scan, Unit, Integration, Negative, KPI)",
   "pending_action": "Human review and merge PR into main",
-  "saved_at": "2026-09-16T07:56:00Z"
+  "saved_at": "2026-09-16T07:56:00Z",
+  "head_sha": "ec14c772bca5ee0c968846c268aeb78f24419999",
+  "pr_url": "https://github.com/moruku36/ai-engineering-factory/pull/4",
+  "pr_number": 4
 }
