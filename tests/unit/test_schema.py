@@ -5,6 +5,9 @@ import pytest
 from yaml.constructor import ConstructorError
 
 from orchestrator.core.schema import (
+    CapabilityStatus,
+    EnvironmentCapabilityProbe,
+    PlanIngestionEngine,
     check_circular_dependencies,
     compute_spec_digest,
     parse_safe_yaml,
@@ -134,3 +137,38 @@ def test_circular_and_invalid_dependencies():
     unknown_dep = {"TASK-001": {"dependencies": ["TASK-999"]}}
     with pytest.raises(ValueError, match="unknown dependency"):
         check_circular_dependencies(unknown_dep)
+
+
+def test_environment_capability_probe():
+    probe = EnvironmentCapabilityProbe()
+    report = probe.probe_all()
+
+    assert "python" in report
+    assert report["python"]["status"] == CapabilityStatus.VERIFIED
+    assert "git" in report
+    assert "isolation" in report
+    assert report["isolation"]["status"] == CapabilityStatus.VERIFIED
+
+
+def test_plan_ingestion_engine():
+    valid_plan = {
+        "schema_version": "2020-12",
+        "plan_id": "PLAN-0001",
+        "target_repo": "https://github.com/moruku36/ai-engineering-factory",
+        "requested_phase": 4,
+        "task_refs": ["AUT-001", "AUT-002"],
+        "max_workers": 2,
+        "max_wall_seconds": 3600,
+        "approved_scope_ref": "scope-v1",
+    }
+    available = {
+        "AUT-001": {"id": "AUT-001", "dependencies": []},
+        "AUT-002": {"id": "AUT-002", "dependencies": ["AUT-001"]},
+    }
+    ingested = PlanIngestionEngine.ingest_plan(valid_plan, available)
+    assert ingested["plan_id"] == "PLAN-0001"
+
+    # Missing task ref fails
+    with pytest.raises(KeyError, match="Plan references unknown tasks"):
+        PlanIngestionEngine.ingest_plan(valid_plan, {"AUT-001": available["AUT-001"]})
+
