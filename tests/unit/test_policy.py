@@ -92,8 +92,8 @@ def test_manual_adapter_integration(tmp_path):
     adapter = ManualAdapter()
     run_id = adapter.start_task(manifest, str(tmp_path))
 
-    # Test valid execution
-    val = adapter.execute_validation_step(run_id, "python", [sys.executable, "-c", "import sys; sys.exit(0)"])
+    # Test valid execution (no shell metacharacters like semicolon)
+    val = adapter.execute_validation_step(run_id, "python", [sys.executable, "-c", "exit(0)"])
     assert val["status"] == "PASS"
 
     # Test shell injection blocked
