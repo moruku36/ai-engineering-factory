@@ -1,0 +1,14 @@
+schema_version: "2020-12"
+profile_name: "default"
+description: "Default execution profile for standard engineering tasks"
+allowed_commands:
+  - "pytest"
+  - "ruff"
+  - "python"
+  - "git"
+resource_limits:
+  max_wall_seconds: 1800
+  max_memory_mb: 2048
+  max_retries: 3
+isolation_level: "worktree_snapshot"
+network_access: false
