@@ -78,3 +78,34 @@ def test_policy_digest_consistency(policy):
     digest2 = policy.get_policy_digest()
     assert digest1 == digest2
     assert len(digest1) == 64
+
+
+def test_manual_adapter_integration(tmp_path):
+    import sys
+    from orchestrator.adapters.manual import ManualAdapter
+    from orchestrator.core.sandbox import ShellInjectionError
+
+    manifest = {
+        "id": "SMP-001",
+        "output_artifacts": [{"path": "reports/out.txt"}],
+    }
+    adapter = ManualAdapter()
+    run_id = adapter.start_task(manifest, str(tmp_path))
+
+    # Test valid execution
+    val = adapter.execute_validation_step(run_id, "python", [sys.executable, "-c", "import sys; sys.exit(0)"])
+    assert val["status"] == "PASS"
+
+    # Test shell injection blocked
+    with pytest.raises(ShellInjectionError):
+        adapter.execute_validation_step(run_id, "python", [sys.executable, "-c", "print('1') ; print('2')"])
+
+    # Test disallowed command blocked
+    with pytest.raises(CommandNotAllowedError):
+        adapter.execute_validation_step(run_id, "curl", ["curl", "https://example.com"])
+
+    # Test cancellation
+    assert adapter.cancel_task(run_id) is True
+    res = adapter.collect_results(run_id)
+    assert res["status"] == "CANCELLED"
+

@@ -20,6 +20,7 @@ def test_sanitize_worker_environment_strips_secrets():
         "DB_PASSWORD": "supersecretpassword",
         "MY_API_KEY": "abcdef123456",
         "PYTHONPATH": "src/",
+        "UNKNOWN_CUSTOM_VAR": "should_be_stripped",
     }
     cleaned = sanitize_worker_environment(dirty_env)
 
@@ -31,6 +32,9 @@ def test_sanitize_worker_environment_strips_secrets():
     assert "DOCKER_HOST" not in cleaned
     assert "DB_PASSWORD" not in cleaned
     assert "MY_API_KEY" not in cleaned
+
+    # Non-allowlisted custom variable stripped
+    assert "UNKNOWN_CUSTOM_VAR" not in cleaned
 
     # Safe vars preserved
     assert cleaned["PATH"] == "/usr/bin"

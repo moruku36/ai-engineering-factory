@@ -55,6 +55,11 @@ def test_phase1_e2e_single_agent_flow(tmp_path):
     )
     assert val_result["status"] == "PASS"
 
+    # Generate output artifact specified in manifest
+    report_file = repo_root / "reports" / "sample-report.json"
+    report_file.parent.mkdir(parents=True, exist_ok=True)
+    report_file.write_text('{"summary": "sample pass"}', encoding="utf-8")
+
     # Step 7: Verify path governance on changed paths
     candidate_changes = ["orchestrator/adapters/manual.py"]
     validate_paths_against_policy(
