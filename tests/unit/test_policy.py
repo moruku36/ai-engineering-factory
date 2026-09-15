@@ -1,0 +1,80 @@
+"""Unit tests for security policy engine."""
+
+import pytest
+
+from orchestrator.core.policy import (
+    ApprovalRequiredError,
+    CommandNotAllowedError,
+    HardDenyViolationError,
+    PolicyEngine,
+)
+
+
+@pytest.fixture
+def policy():
+    return PolicyEngine()
+
+
+def test_hard_deny_actions_strictly_rejected(policy):
+    # Even with has_valid_approval=True, Hard Deny cannot be bypassed
+    hard_deny_cases = [
+        "direct_push_protected_branch",
+        "force_push_protected_branch",
+        "production_resource_destroy",
+        "ci_test_bypass",
+        "secret_credential_commit",
+        "automated_pr_merge",
+    ]
+    for action in hard_deny_cases:
+        with pytest.raises(HardDenyViolationError, match="strictly prohibited by Hard Deny"):
+            policy.evaluate_action(action, has_valid_approval=True)
+
+
+def test_approval_required_actions(policy):
+    approval_cases = [
+        "terraform_apply",
+        "merge_pull_request",
+        "credential_provision",
+        "release_publish",
+    ]
+    for action in approval_cases:
+        # Fails without approval
+        with pytest.raises(ApprovalRequiredError, match="requires explicit one-time Human Approval"):
+            policy.evaluate_action(action, has_valid_approval=False)
+
+        # Passes with approval
+        policy.evaluate_action(action, has_valid_approval=True)
+
+
+def test_git_protected_branch_rules(policy):
+    # Deny direct push to main
+    with pytest.raises(HardDenyViolationError, match="Direct push to protected branch"):
+        policy.evaluate_git_operation(target_branch="main", operation="push", is_force=False)
+
+    # Deny force push to main
+    with pytest.raises(HardDenyViolationError, match="Direct push to protected branch"):
+        policy.evaluate_git_operation(target_branch="main", operation="push", is_force=True)
+
+    # Allow normal push to task branch
+    policy.evaluate_git_operation(target_branch="task/feature-1", operation="push", is_force=False)
+
+
+def test_command_registry_enforcement(policy):
+    # Allowed commands pass
+    policy.evaluate_command_id("pytest")
+    policy.evaluate_command_id("ruff")
+    policy.evaluate_command_id("git")
+
+    # Disallowed commands fail
+    with pytest.raises(CommandNotAllowedError, match="not in allowed command registry"):
+        policy.evaluate_command_id("curl")
+
+    with pytest.raises(CommandNotAllowedError, match="not in allowed command registry"):
+        policy.evaluate_command_id("rm -rf /")
+
+
+def test_policy_digest_consistency(policy):
+    digest1 = policy.get_policy_digest()
+    digest2 = policy.get_policy_digest()
+    assert digest1 == digest2
+    assert len(digest1) == 64
