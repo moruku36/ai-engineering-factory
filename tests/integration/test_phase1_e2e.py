@@ -5,6 +5,8 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
+
 from orchestrator.adapters.manual import (
     AntigravityAdapter,
     GitHubStatePublisher,
@@ -229,9 +231,8 @@ def test_phase3_multi_worker_timeline_and_benchmark(tmp_path):
     assert benchmark["tasks_completed"] == 3
 
 
-def test_phase4_autonomous_loop_e2e_and_kpi(tmp_path):
-    """AUT-005 Integration Test:
-    Verify full Phase 4 autonomous loop:
+def test_phase4_manual_scaffolding_rejects_unimplemented_publishing(tmp_path):
+    """Local scaffolding test, not a native Antigravity/GitHub acceptance test:
     1. Probe execution environment.
     2. Ingest high-level execution plan.
     3. DAG scheduler resolves dependencies & dispatches.
@@ -287,7 +288,7 @@ def test_phase4_autonomous_loop_e2e_and_kpi(tmp_path):
     assert dispatchable == ["AUT-001"]
 
     # 4. AntigravityAdapter Execution
-    adapter = AntigravityAdapter(mode="autonomous")
+    adapter = AntigravityAdapter(mode="manual")
     run_id = adapter.start_task(tasks_catalog["AUT-001"], str(tmp_path))
     scheduler.dispatch("AUT-001")
 
@@ -305,13 +306,13 @@ def test_phase4_autonomous_loop_e2e_and_kpi(tmp_path):
 
     # 5. Publisher
     publisher = GitHubStatePublisher()
-    pr_res = publisher.create_or_update_pr(
-        title="feat(phase-4): Automation Engine",
-        base_branch="main",
-        head_branch="phase/p4-automation",
-        body="Phase 4 autonomous verification",
-    )
-    assert pr_res["status"] == "OPEN"
+    with pytest.raises(NotImplementedError, match="GitHub PR transport"):
+        publisher.create_or_update_pr(
+            title="feat(phase-4): Automation Engine",
+            base_branch="main",
+            head_branch="phase/p4-automation",
+            body="Manual scaffolding verification only",
+        )
 
     # 6. KPI Output
     t_loop_end = time.time()

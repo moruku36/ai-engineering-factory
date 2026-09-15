@@ -22,7 +22,7 @@ def make_task(
             "test_db": False,
             "exclusive_keys": keys or [],
         },
-        "status": "PROPOSED",
+        "status": "READY",
     }
 
 

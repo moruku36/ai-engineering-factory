@@ -26,6 +26,8 @@ class TaskDAG:
 
     def __init__(self, task_manifests: list[dict[str, Any]]):
         self.tasks: dict[str, dict[str, Any]] = {t["id"]: t for t in task_manifests}
+        if len(self.tasks) != len(task_manifests):
+            raise ValueError("Duplicate task IDs in plan")
         check_circular_dependencies(self.tasks)
 
     def get_dependents(self, task_id: str) -> list[str]:
@@ -51,6 +53,7 @@ class DAGScheduler:
             t["id"]: TaskStatus(t.get("status", TaskStatus.PROPOSED.value)) for t in task_manifests
         }
         self.active_tasks: set[str] = set()
+        self.attempts = {t["id"]: 0 for t in task_manifests}
 
     def update_task_status(self, task_id: str, new_status: TaskStatus) -> None:
         """Update task status in scheduler."""
@@ -73,12 +76,15 @@ class DAGScheduler:
         """Reset a failed task back to READY if eligible for retry."""
         if self.task_statuses.get(task_id) != TaskStatus.FAILED:
             raise ValueError(f"Task {task_id} is not in FAILED state (status={self.task_statuses.get(task_id)})")
+        limit = min(3, self.dag.tasks[task_id].get("retry", {}).get("max_attempts", 3))
+        if self.attempts[task_id] >= limit:
+            raise ValueError(f"Task {task_id} exhausted retry budget")
         self.task_statuses[task_id] = TaskStatus.READY
 
 
     def get_dispatchable_tasks(self) -> list[str]:
         """Calculate tasks that are ready to be dispatched:
-        1. Current status is PROPOSED or READY.
+        1. Current status is READY (preflight completed).
         2. All dependencies are DONE.
         3. No resource conflict with currently active tasks.
         4. Respect max_workers concurrency.
@@ -94,7 +100,7 @@ class DAGScheduler:
                 continue
 
             status = self.task_statuses[tid]
-            if status not in (TaskStatus.PROPOSED, TaskStatus.READY):
+            if status != TaskStatus.READY:
                 continue
 
             # Check dependencies: must ALL be DONE
@@ -130,10 +136,13 @@ class DAGScheduler:
 
     def dispatch(self, task_id: str) -> None:
         """Mark task as actively dispatched and running."""
+        if task_id not in self.get_dispatchable_tasks():
+            raise ValueError(f"Task {task_id} is not dispatchable")
         if len(self.active_tasks) >= self.max_workers:
             raise RuntimeError(f"Cannot dispatch {task_id}: reached max workers limit ({self.max_workers})")
 
         self.active_tasks.add(task_id)
+        self.attempts[task_id] += 1
         self.task_statuses[task_id] = TaskStatus.RUNNING
 
     def _check_task_conflict(self, task_a: dict[str, Any], task_b: dict[str, Any]) -> bool:

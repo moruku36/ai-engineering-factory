@@ -132,6 +132,7 @@ def check_circular_dependencies(tasks: dict[str, dict[str, Any]]) -> None:
 
 class CapabilityStatus:
     VERIFIED = "VERIFIED"
+    UNVERIFIED = "UNVERIFIED"
     UNAVAILABLE = "UNAVAILABLE"
     MANUAL_ONLY = "MANUAL_ONLY"
 
@@ -180,16 +181,17 @@ class EnvironmentCapabilityProbe:
         # Antigravity CLI
         agy_path = shutil.which("agy")
         agy_info = {
-            "status": CapabilityStatus.VERIFIED if agy_path else CapabilityStatus.UNAVAILABLE,
+            "status": CapabilityStatus.UNVERIFIED if agy_path else CapabilityStatus.UNAVAILABLE,
             "path": agy_path,
-            "note": "Antigravity CLI detected" if agy_path else "agy CLI not detected in PATH",
+            "note": "Binary detected; execution contract unverified" if agy_path else "agy CLI not detected in PATH",
         }
 
         # Isolation
         isolation_info = {
-            "worktree_support": True,
-            "runtime_root_isolation": True,
-            "status": CapabilityStatus.VERIFIED,
+            "worktree_support": None,
+            "runtime_root_isolation": None,
+            "status": CapabilityStatus.MANUAL_ONLY,
+            "note": "OS isolation has not been probed; environment filtering is not a sandbox",
         }
 
         return {

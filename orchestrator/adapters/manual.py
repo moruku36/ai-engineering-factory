@@ -45,6 +45,8 @@ class ManualAdapter(ExecutionAdapter):
         """Execute a typed command without shell=True enforcing sandbox and policy checks."""
         if run_id not in self.runs:
             raise KeyError(f"Run ID {run_id} not found")
+        if self.runs[run_id]["status"] != "RUNNING":
+            raise RuntimeError("Cannot execute validation for an inactive run")
 
         # 1. Validate argv against shell metacharacters
         validate_command_argv(argv)
@@ -124,14 +126,17 @@ class ManualAdapter(ExecutionAdapter):
 
         run_info = self.runs[run_id]
         manifest = run_info["manifest"]
-        worktree = Path(run_info["worktree_path"])
+        worktree = Path(run_info["worktree_path"]).resolve()
 
         # Calculate real artifact hashes from worktree filesystem
         artifact_hashes = {}
         all_artifacts_found = True
         for out in manifest.get("output_artifacts", []):
             artifact_rel = out["path"]
-            artifact_file = worktree / artifact_rel
+            relative_path = Path(artifact_rel)
+            artifact_file = (worktree / relative_path).resolve()
+            if relative_path.is_absolute() or not artifact_file.is_relative_to(worktree):
+                raise ValueError("Artifact path escapes worktree")
             if artifact_file.is_file():
                 hasher = hashlib.sha256()
                 with open(artifact_file, "rb") as f:
@@ -143,7 +148,11 @@ class ManualAdapter(ExecutionAdapter):
                 artifact_hashes[artifact_rel] = None
 
         # Any failure in validations or missing required artifact results in FAILED
-        all_passed = all(v["status"] == "PASS" for v in run_info["validations"]) if run_info["validations"] else True
+        required_ids = {v["command_id"] for v in manifest.get("validation", [])}
+        passed_ids = {v["command_id"] for v in run_info["validations"] if v["status"] == "PASS"}
+        all_passed = bool(run_info["validations"]) and all(
+            v["status"] == "PASS" for v in run_info["validations"]
+        ) and required_ids.issubset(passed_ids)
         if run_info.get("status") == "CANCELLED":
             final_status = "CANCELLED"
         elif all_passed and all_artifacts_found:
@@ -175,9 +184,11 @@ class ManualAdapter(ExecutionAdapter):
 
 
 class AntigravityAdapter(ExecutionAdapter):
-    """Antigravity agent execution adapter with fallback to secure manual executor."""
+    """Manual compatibility facade. Native Antigravity execution is not implemented."""
 
     def __init__(self, mode: str = "auto", policy_engine: PolicyEngine | None = None):
+        if mode != "manual":
+            raise NotImplementedError("Native Antigravity execution is unavailable; select mode='manual' explicitly")
         self.mode = mode
         self.manual_adapter = ManualAdapter(policy_engine=policy_engine)
         self.policy_engine = policy_engine or PolicyEngine()
@@ -202,7 +213,7 @@ class AntigravityAdapter(ExecutionAdapter):
 
     def collect_results(self, run_id: str) -> dict[str, Any]:
         results = self.manual_adapter.collect_results(run_id)
-        results["adapter"] = "AntigravityAdapter"
+        results["adapter"] = "ManualAdapter"
         results["mode"] = self.mode
         return results
 
@@ -216,7 +227,7 @@ class GitHubStatePublisher:
     def publish_branch(self, repo_root: Path | str, target_branch: str, is_force: bool = False) -> None:
         """Evaluate branch protection before pushing."""
         self.policy_engine.evaluate_git_operation(target_branch, "push", is_force=is_force)
-        # Safe operation passed policy
+        raise NotImplementedError("GitHub push transport is not implemented")
 
     def create_or_update_pr(
         self,
@@ -226,26 +237,5 @@ class GitHubStatePublisher:
         body: str,
         existing_prs: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
-        """Create or update PR idempotently."""
-        existing_prs = existing_prs or []
-        for pr in existing_prs:
-            if pr.get("headRefName") == head_branch and pr.get("baseRefName") == base_branch:
-                return {
-                    "action": "updated",
-                    "pr_number": pr.get("number"),
-                    "url": pr.get("url"),
-                    "status": "OPEN",
-                }
-
-        # New PR record
-        return {
-            "action": "created",
-            "pr_number": 999,
-            "url": f"https://github.com/moruku36/ai-engineering-factory/pull/{head_branch}",
-            "title": title,
-            "base": base_branch,
-            "head": head_branch,
-            "status": "OPEN",
-        }
-
-
+        """Refuse to report publication without a real GitHub transport."""
+        raise NotImplementedError("GitHub PR transport is not implemented")
