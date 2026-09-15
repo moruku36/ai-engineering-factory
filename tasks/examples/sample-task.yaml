@@ -1,0 +1,43 @@
+schema_version: "2020-12"
+id: "SMP-001"
+title: "Implement Core Health Check Endpoint"
+description: "Sample foundation task to verify single-agent E2E flow"
+phase: 1
+dependencies: []
+parallelizable: true
+role: "builder"
+repository: "https://github.com/moruku36/ai-engineering-factory"
+base_ref: "phase/p1-foundation"
+branch: "task/smp-001"
+worktree: "runtime-root/worktrees/smp-001"
+allowed_paths:
+  - "orchestrator/"
+prohibited_paths:
+  - ".github/"
+  - "schemas/"
+validation:
+  - command_id: "pytest"
+    timeout_seconds: 300
+completion_criteria:
+  - id: "CC-1"
+    statement: "All unit tests pass"
+    evidence_type: "test_run"
+risk: "low"
+approval:
+  before_execution: false
+  before_merge: true
+output_artifacts:
+  - kind: "test_summary"
+    path: "reports/sample-report.json"
+    classification: "internal"
+resources:
+  ports: []
+  test_db: false
+  exclusive_keys: []
+permissions:
+  - "default"
+retry:
+  max_attempts: 3
+  timeout_minutes: 30
+status: "PROPOSED"
+state_ref: "state/tasks/SMP-001.json"
