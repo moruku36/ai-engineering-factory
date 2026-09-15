@@ -13,6 +13,8 @@
   4. Never blindly trust unvalidated stale sessions.
 
 ## 3. Inspection Commands
-- Inspect state ledger: `python -m orchestrator.cli state status`
-- Validate task schema: `python -m orchestrator.cli validate <task.yaml>`
-- Check active leases: `python -m orchestrator.cli lease list`
+The proposed `orchestrator.cli` entrypoint is not implemented. Do not use the
+previously advertised state/validate/lease commands as operational instructions.
+Current functionality is exercised through Python modules and fixture tests only.
+See [the readiness review](docs/operations/POST_PHASE4_REVIEW.md) for the remaining
+entrypoint, isolation and integration gates.

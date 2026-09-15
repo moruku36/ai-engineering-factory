@@ -1,7 +1,9 @@
 # Contributing Guide
 
 ## 1. Branch Strategy
-- `main`: Protected branch representing production release. Direct pushes are blocked.
+- `main`: Intended protected integration branch. Direct pushes are forbidden by
+  project policy; server enforcement was unavailable at the 2026-09-16 review.
+  Do not assume branch protection is configured merely because this guide requires it.
 - `phase/p<N>-<name>`: Integration branch for Phase N development.
 - `task/<id>`: Isolated branch for individual tasks (e.g., `task/fnd-001`).
 
