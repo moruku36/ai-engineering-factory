@@ -30,6 +30,7 @@
         "task_execution",
         "merge_pull_request",
         "infra_apply",
+        "terraform_apply",
         "credential_provision",
         "release_publish"
       ]

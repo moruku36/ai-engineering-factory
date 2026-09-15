@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-engineering-factory/schemas/policy.schema.json",
+  "title": "SecurityPolicy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "policy_id",
+    "hard_deny_actions",
+    "approval_required_actions",
+    "allowed_commands",
+    "protected_branches"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "2020-12"
+    },
+    "policy_id": {
+      "type": "string"
+    },
+    "hard_deny_actions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "approval_required_actions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "allowed_commands": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "protected_branches": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

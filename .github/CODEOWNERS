@@ -1,0 +1,7 @@
+# Critical Control Plane and CI files require Human review
+.github/workflows/ @moruku36
+SECURITY.md @moruku36
+schemas/policy.schema.json @moruku36
+orchestrator/core/policy.py @moruku36
+orchestrator/core/approval.py @moruku36
+scripts/secret_scan.py @moruku36
