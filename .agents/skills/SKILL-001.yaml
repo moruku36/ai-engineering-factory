@@ -1,0 +1,21 @@
+schema_version: "2020-12"
+id: "SKILL-001"
+name: "python_unit_test_execution"
+input:
+  test_path: "string"
+precondition:
+  - "Virtualenv .venv is activated"
+  - "pytest is installed in environment"
+steps:
+  - "Check target test file exists"
+  - "Run pytest with typed argv"
+  - "Parse test result"
+command_ids:
+  - "pytest"
+output:
+  exit_code: "integer"
+  passed: "boolean"
+validation: "exit_code == 0"
+failure: "Emit error log and halt execution"
+approval:
+  required: false

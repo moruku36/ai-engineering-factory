@@ -1,0 +1,6 @@
+schema_version: "2020-12"
+id: "RULE-002"
+version: "1.0.0"
+scope: "global"
+enforcement: "hard_deny"
+description: "Disallow invocation of commands not explicitly registered in the project profile."
