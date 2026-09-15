@@ -1,5 +1,6 @@
 """Integration test verifying Phase 1 Foundation E2E lifecycle."""
 
+import sys
 from pathlib import Path
 
 from orchestrator.adapters.manual import ManualAdapter
@@ -50,7 +51,7 @@ def test_phase1_e2e_single_agent_flow(tmp_path):
     val_result = adapter.execute_validation_step(
         run_id,
         "pytest",
-        [str(repo_root / ".venv" / "Scripts" / "pytest"), "-q", "tests/unit/test_schema.py"],
+        [sys.executable, "-m", "pytest", "-q", "tests/unit/test_schema.py"],
     )
     assert val_result["status"] == "PASS"
 
