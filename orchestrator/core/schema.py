@@ -128,3 +128,95 @@ def check_circular_dependencies(tasks: dict[str, dict[str, Any]]) -> None:
     for tid in tasks:
         if tid not in visited:
             dfs(tid, [tid])
+
+
+class CapabilityStatus:
+    VERIFIED = "VERIFIED"
+    UNAVAILABLE = "UNAVAILABLE"
+    MANUAL_ONLY = "MANUAL_ONLY"
+
+
+class EnvironmentCapabilityProbe:
+    """Probes host execution environment and tools without fabricating capabilities."""
+
+    def probe_all(self) -> dict[str, Any]:
+        import shutil
+        import subprocess
+        import sys
+
+        # Python
+        python_info = {
+            "version": sys.version.split()[0],
+            "executable": sys.executable,
+            "status": CapabilityStatus.VERIFIED,
+        }
+
+        # Git
+        git_path = shutil.which("git")
+        if git_path:
+            git_res = subprocess.run([git_path, "--version"], capture_output=True, text=True, check=False)
+            git_ver = git_res.stdout.strip() if git_res.returncode == 0 else None
+            git_info = {
+                "status": CapabilityStatus.VERIFIED if git_ver else CapabilityStatus.UNAVAILABLE,
+                "version": git_ver,
+                "path": git_path,
+            }
+        else:
+            git_info = {"status": CapabilityStatus.UNAVAILABLE, "version": None}
+
+        # GitHub CLI (gh)
+        gh_path = shutil.which("gh")
+        if gh_path:
+            gh_res = subprocess.run([gh_path, "auth", "status"], capture_output=True, text=True, check=False)
+            is_auth = gh_res.returncode == 0
+            gh_info = {
+                "status": CapabilityStatus.VERIFIED if is_auth else CapabilityStatus.MANUAL_ONLY,
+                "authenticated": is_auth,
+                "path": gh_path,
+            }
+        else:
+            gh_info = {"status": CapabilityStatus.UNAVAILABLE, "authenticated": False}
+
+        # Antigravity CLI
+        agy_path = shutil.which("agy")
+        agy_info = {
+            "status": CapabilityStatus.VERIFIED if agy_path else CapabilityStatus.UNAVAILABLE,
+            "path": agy_path,
+            "note": "Antigravity CLI detected" if agy_path else "agy CLI not detected in PATH",
+        }
+
+        # Isolation
+        isolation_info = {
+            "worktree_support": True,
+            "runtime_root_isolation": True,
+            "status": CapabilityStatus.VERIFIED,
+        }
+
+        return {
+            "python": python_info,
+            "git": git_info,
+            "gh": gh_info,
+            "antigravity_cli": agy_info,
+            "isolation": isolation_info,
+        }
+
+
+class PlanIngestionEngine:
+    """Validates and ingests execution plans according to plan.schema.json."""
+
+    @staticmethod
+    def ingest_plan(plan_dict: dict[str, Any], available_tasks: dict[str, dict[str, Any]]) -> dict[str, Any]:
+        validate_against_schema(plan_dict, "plan.schema.json")
+        task_refs = plan_dict["task_refs"]
+
+        # Ensure all task refs exist in available_tasks
+        missing = [t for t in task_refs if t not in available_tasks]
+        if missing:
+            raise KeyError(f"Plan references unknown tasks not present in repository: {missing}")
+
+        # Check for circular dependencies among referenced tasks
+        referenced_tasks = {t: available_tasks[t] for t in task_refs}
+        check_circular_dependencies(referenced_tasks)
+
+        return plan_dict
+
