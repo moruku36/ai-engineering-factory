@@ -20,7 +20,7 @@ def scan_diff() -> int:
         cmd = ["git", "diff", "HEAD~1...HEAD"]
         res = subprocess.run(cmd, capture_output=True, text=True, check=False)
         diff_text = res.stdout if res.returncode == 0 else ""
-    except Exception:
+    except OSError:
         diff_text = ""
 
     found_secrets = []
