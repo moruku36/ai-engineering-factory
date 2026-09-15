@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-engineering-factory/schemas/result.schema.json",
+  "title": "TaskExecutionResult",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "run_id",
+    "task_id",
+    "attempt",
+    "spec_sha",
+    "policy_sha",
+    "base_sha",
+    "candidate_sha",
+    "changed_paths",
+    "validations",
+    "artifact_hashes",
+    "timestamp",
+    "status",
+    "usage"
+  ],
+  "properties": {
+    "run_id": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9]{1,7}-[0-9]{3,6}$"
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3
+    },
+    "spec_sha": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "policy_sha": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "base_sha": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "candidate_sha": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "changed_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "validations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["command_id", "exit_code", "status", "tool_version"],
+        "properties": {
+          "command_id": {
+            "type": "string"
+          },
+          "exit_code": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["PASS", "FAIL", "SKIPPED", "ERROR"]
+          },
+          "tool_version": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "artifact_hashes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      }
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["SUCCESS", "FAILED", "BLOCKED"]
+    },
+    "usage": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "prompt_tokens": {
+          "type": ["integer", "null"]
+        },
+        "completion_tokens": {
+          "type": ["integer", "null"]
+        },
+        "total_tokens": {
+          "type": ["integer", "null"]
+        },
+        "wall_time_seconds": {
+          "type": ["number", "null"]
+        }
+      }
+    }
+  }
+}

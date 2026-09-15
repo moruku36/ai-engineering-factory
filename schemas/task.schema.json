@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-engineering-factory/schemas/task.schema.json",
+  "title": "TaskManifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "title",
+    "description",
+    "phase",
+    "dependencies",
+    "parallelizable",
+    "role",
+    "repository",
+    "base_ref",
+    "branch",
+    "worktree",
+    "allowed_paths",
+    "prohibited_paths",
+    "validation",
+    "completion_criteria",
+    "risk",
+    "approval",
+    "output_artifacts",
+    "resources",
+    "permissions",
+    "retry",
+    "status",
+    "state_ref"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "2020-12"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9]{1,7}-[0-9]{3,6}$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "phase": {
+      "type": "integer",
+      "enum": [1, 2, 3, 4]
+    },
+    "dependencies": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9]{1,7}-[0-9]{3,6}$"
+      }
+    },
+    "parallelizable": {
+      "type": "boolean"
+    },
+    "role": {
+      "type": "string",
+      "enum": ["builder", "tester", "reviewer"]
+    },
+    "repository": {
+      "type": "string",
+      "minLength": 1
+    },
+    "base_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "branch": {
+      "type": "string",
+      "pattern": "^task/[a-z0-9-]+$"
+    },
+    "worktree": {
+      "type": "string",
+      "minLength": 1
+    },
+    "allowed_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "prohibited_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "validation": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["command_id", "timeout_seconds"],
+        "properties": {
+          "command_id": {
+            "type": "string"
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1800
+          }
+        }
+      }
+    },
+    "completion_criteria": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "statement", "evidence_type"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "statement": {
+            "type": "string"
+          },
+          "evidence_type": {
+            "type": "string",
+            "enum": ["test_run", "lint_run", "file_exists", "artifact_hash", "review_verdict"]
+          }
+        }
+      }
+    },
+    "risk": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "critical"]
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["before_execution", "before_merge"],
+      "properties": {
+        "before_execution": {
+          "type": "boolean"
+        },
+        "before_merge": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "output_artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "path", "classification"],
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "classification": {
+            "type": "string",
+            "enum": ["public", "internal", "restricted"]
+          }
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ports", "test_db", "exclusive_keys"],
+      "properties": {
+        "ports": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "test_db": {
+          "type": ["string", "boolean"]
+        },
+        "exclusive_keys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "permissions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "retry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_attempts", "timeout_minutes"],
+      "properties": {
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "timeout_minutes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30
+        }
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "PROPOSED",
+        "READY",
+        "RUNNING",
+        "VALIDATING",
+        "REVIEW",
+        "READY_FOR_MERGE",
+        "DONE",
+        "FAILED",
+        "BLOCKED",
+        "NEEDS_HUMAN",
+        "CANCELLED"
+      ]
+    },
+    "state_ref": {
+      "type": "string"
+    }
+  }
+}

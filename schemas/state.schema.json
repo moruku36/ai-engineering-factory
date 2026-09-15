@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-engineering-factory/schemas/state.schema.json",
+  "title": "TaskStateLedger",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "task_id",
+    "revision",
+    "status",
+    "spec_digest",
+    "policy_digest",
+    "base_sha",
+    "candidate_sha",
+    "attempt",
+    "updated_at",
+    "history"
+  ],
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9]{1,7}-[0-9]{3,6}$"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "PROPOSED",
+        "READY",
+        "RUNNING",
+        "VALIDATING",
+        "REVIEW",
+        "READY_FOR_MERGE",
+        "DONE",
+        "FAILED",
+        "BLOCKED",
+        "NEEDS_HUMAN",
+        "CANCELLED"
+      ]
+    },
+    "spec_digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "policy_digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "base_sha": {
+      "type": ["string", "null"]
+    },
+    "candidate_sha": {
+      "type": ["string", "null"]
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["from_status", "to_status", "revision", "timestamp", "reason"],
+        "properties": {
+          "from_status": {
+            "type": "string"
+          },
+          "to_status": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

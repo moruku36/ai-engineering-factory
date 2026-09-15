@@ -1,0 +1,136 @@
+"""Unit tests for schema validation and security parser."""
+
+import jsonschema
+import pytest
+from yaml.constructor import ConstructorError
+
+from orchestrator.core.schema import (
+    check_circular_dependencies,
+    compute_spec_digest,
+    parse_safe_yaml,
+    validate_against_schema,
+)
+
+VALID_TASK_YAML = """
+schema_version: "2020-12"
+id: "TASK-001"
+title: "Sample Task"
+description: "A sample valid task for testing"
+phase: 1
+dependencies: []
+parallelizable: true
+role: "builder"
+repository: "https://github.com/moruku36/ai-engineering-factory"
+base_ref: "main"
+branch: "task/sample-001"
+worktree: "runtime-root/worktrees/sample-001"
+allowed_paths:
+  - "orchestrator/"
+prohibited_paths:
+  - ".github/"
+validation:
+  - command_id: "pytest_unit"
+    timeout_seconds: 300
+completion_criteria:
+  - id: "CC-1"
+    statement: "Unit tests pass"
+    evidence_type: "test_run"
+risk: "low"
+approval:
+  before_execution: false
+  before_merge: true
+output_artifacts:
+  - kind: "test_report"
+    path: "reports/test.json"
+    classification: "internal"
+resources:
+  ports: [8000]
+  test_db: true
+  exclusive_keys: ["db_lock"]
+permissions:
+  - "default"
+retry:
+  max_attempts: 3
+  timeout_minutes: 30
+status: "PROPOSED"
+state_ref: "state/tasks/TASK-001.json"
+"""
+
+
+def test_valid_task_manifest():
+    data = parse_safe_yaml(VALID_TASK_YAML)
+    validate_against_schema(data, "task.schema.json")
+    assert data["id"] == "TASK-001"
+
+
+def test_reject_unknown_field():
+    yaml_with_extra = VALID_TASK_YAML + "\nextra_unauthorized_field: 'malicious'\n"
+    data = parse_safe_yaml(yaml_with_extra)
+    with pytest.raises(jsonschema.ValidationError):
+        validate_against_schema(data, "task.schema.json")
+
+
+def test_reject_invalid_task_id():
+    yaml_bad_id = VALID_TASK_YAML.replace('id: "TASK-001"', 'id: "bad-task-id"')
+    data = parse_safe_yaml(yaml_bad_id)
+    with pytest.raises(jsonschema.ValidationError):
+        validate_against_schema(data, "task.schema.json")
+
+
+def test_reject_duplicate_yaml_keys():
+    duplicate_key_yaml = """
+schema_version: "2020-12"
+id: "TASK-001"
+id: "TASK-002"
+"""
+    with pytest.raises(ConstructorError):
+        parse_safe_yaml(duplicate_key_yaml)
+
+
+def test_reject_yaml_alias():
+    alias_yaml = """
+base: &base_anchor
+  schema_version: "2020-12"
+target:
+  <<: *base_anchor
+"""
+    with pytest.raises(TypeError, match="YAML aliases and anchors are prohibited"):
+        parse_safe_yaml(alias_yaml)
+
+
+def test_spec_digest_invariance():
+    data1 = parse_safe_yaml(VALID_TASK_YAML)
+    digest1 = compute_spec_digest(data1)
+
+    # Modify status and state_ref
+    data2 = dict(data1)
+    data2["status"] = "RUNNING"
+    data2["state_ref"] = "different/ref.json"
+    digest2 = compute_spec_digest(data2)
+
+    assert digest1 == digest2
+
+    # Modifying title should change digest
+    data3 = dict(data1)
+    data3["title"] = "Modified Title"
+    digest3 = compute_spec_digest(data3)
+    assert digest1 != digest3
+
+
+def test_circular_and_invalid_dependencies():
+    tasks = {
+        "TASK-001": {"dependencies": ["TASK-002"]},
+        "TASK-002": {"dependencies": ["TASK-001"]},
+    }
+    with pytest.raises(ValueError, match="Circular dependency detected"):
+        check_circular_dependencies(tasks)
+
+    # Self dependency
+    self_dep = {"TASK-001": {"dependencies": ["TASK-001"]}}
+    with pytest.raises(ValueError, match="Self dependency detected"):
+        check_circular_dependencies(self_dep)
+
+    # Unknown dependency
+    unknown_dep = {"TASK-001": {"dependencies": ["TASK-999"]}}
+    with pytest.raises(ValueError, match="unknown dependency"):
+        check_circular_dependencies(unknown_dep)

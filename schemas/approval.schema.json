@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-engineering-factory/schemas/approval.schema.json",
+  "title": "ApprovalToken",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "token_id",
+    "action",
+    "repository",
+    "task_id",
+    "head_sha",
+    "target_ref",
+    "argv_digest",
+    "policy_hash",
+    "plan_hash",
+    "approved_by",
+    "created_at",
+    "expires_at",
+    "consumed"
+  ],
+  "properties": {
+    "token_id": {
+      "type": "string",
+      "pattern": "^tok-[a-f0-9]{32}$"
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "task_execution",
+        "merge_pull_request",
+        "infra_apply",
+        "credential_provision",
+        "release_publish"
+      ]
+    },
+    "repository": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9]{1,7}-[0-9]{3,6}$"
+    },
+    "head_sha": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "target_ref": {
+      "type": "string"
+    },
+    "argv_digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "policy_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "plan_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "approved_by": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "consumed": {
+      "type": "boolean"
+    }
+  }
+}
