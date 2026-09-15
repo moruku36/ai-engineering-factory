@@ -1,20 +1,26 @@
 """Manual execution adapter for deterministic local and CI runs."""
 
 import hashlib
+import os
 import subprocess
 import time
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from orchestrator.adapters.base import ExecutionAdapter
+from orchestrator.core.policy import CommandNotAllowedError, PolicyEngine
+from orchestrator.core.sandbox import sanitize_worker_environment, validate_command_argv
 
 
 class ManualAdapter(ExecutionAdapter):
     """Executes pre-registered validation commands synchronously without shell=True."""
 
-    def __init__(self):
+    def __init__(self, policy_engine: PolicyEngine | None = None):
         self.runs: dict[str, dict[str, Any]] = {}
+        self.active_processes: dict[str, subprocess.Popen] = {}
+        self.policy_engine = policy_engine or PolicyEngine()
 
     def start_task(self, task_manifest: dict[str, Any], worktree_path: str) -> str:
         run_id = f"run-{uuid.uuid4().hex[:12]}"
@@ -37,28 +43,49 @@ class ManualAdapter(ExecutionAdapter):
         argv: list[str],
         timeout_seconds: int = 300,
     ) -> dict[str, Any]:
-        """Execute a typed command without shell=True."""
+        """Execute a typed command without shell=True enforcing sandbox and policy checks."""
         if run_id not in self.runs:
             raise KeyError(f"Run ID {run_id} not found")
 
+        # 1. Validate argv against shell metacharacters
+        validate_command_argv(argv)
+
+        # 2. Verify command_id and base executable against policy registry
+        self.policy_engine.evaluate_command_id(command_id)
+        exe_name = Path(argv[0]).name
+        # Strip Windows .exe extension if present
+        if exe_name.lower().endswith(".exe"):
+            exe_name = exe_name[:-4]
+        self.policy_engine.evaluate_command_id(exe_name)
+
+        # 3. Sanitize environment
+        safe_env = sanitize_worker_environment()
+
         worktree = self.runs[run_id]["worktree_path"]
         try:
-            res = subprocess.run(
+            proc = subprocess.Popen(
                 argv,
                 cwd=worktree,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                timeout=timeout_seconds,
-                check=False,
+                env=safe_env,
             )
-            val_status = "PASS" if res.returncode == 0 else "FAIL"
-            exit_code = res.returncode
-        except subprocess.TimeoutExpired:
-            val_status = "ERROR"
-            exit_code = -1
+            self.active_processes[run_id] = proc
+            try:
+                stdout, stderr = proc.communicate(timeout=timeout_seconds)
+                exit_code = proc.returncode
+                val_status = "PASS" if exit_code == 0 else "FAIL"
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.communicate()
+                val_status = "ERROR"
+                exit_code = -1
         except OSError:
             val_status = "ERROR"
             exit_code = -2
+        finally:
+            self.active_processes.pop(run_id, None)
 
         val_record = {
             "command_id": command_id,
@@ -77,6 +104,18 @@ class ManualAdapter(ExecutionAdapter):
     def cancel_task(self, run_id: str) -> bool:
         if run_id in self.runs:
             self.runs[run_id]["status"] = "CANCELLED"
+            # Terminate active process if running
+            proc = self.active_processes.pop(run_id, None)
+            if proc and proc.poll() is None:
+                try:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=2.0)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        proc.wait(timeout=2.0)
+                except OSError:
+                    pass
             return True
         return False
 
@@ -86,15 +125,32 @@ class ManualAdapter(ExecutionAdapter):
 
         run_info = self.runs[run_id]
         manifest = run_info["manifest"]
+        worktree = Path(run_info["worktree_path"])
 
-        # Calculate dummy or real artifact hashes
+        # Calculate real artifact hashes from worktree filesystem
         artifact_hashes = {}
+        all_artifacts_found = True
         for out in manifest.get("output_artifacts", []):
-            artifact_hashes[out["path"]] = hashlib.sha256(out["path"].encode("utf-8")).hexdigest()
+            artifact_rel = out["path"]
+            artifact_file = worktree / artifact_rel
+            if artifact_file.is_file():
+                hasher = hashlib.sha256()
+                with open(artifact_file, "rb") as f:
+                    while chunk := f.read(65536):
+                        hasher.update(chunk)
+                artifact_hashes[artifact_rel] = hasher.hexdigest()
+            else:
+                all_artifacts_found = False
+                artifact_hashes[artifact_rel] = None
 
-        # Any failure in validations results in FAILED
+        # Any failure in validations or missing required artifact results in FAILED
         all_passed = all(v["status"] == "PASS" for v in run_info["validations"]) if run_info["validations"] else True
-        final_status = "SUCCESS" if all_passed else "FAILED"
+        if run_info.get("status") == "CANCELLED":
+            final_status = "CANCELLED"
+        elif all_passed and all_artifacts_found:
+            final_status = "SUCCESS"
+        else:
+            final_status = "FAILED"
 
         now = datetime.now(UTC).isoformat()
         return {
@@ -117,3 +173,4 @@ class ManualAdapter(ExecutionAdapter):
                 "wall_time_seconds": round(time.time() - run_info["start_time"], 2),
             },
         }
+

@@ -22,6 +22,7 @@ DANGEROUS_ENV_PREFIXES = (
 SAFE_PASSTHROUGH_ENV_VARS = {
     "PATH",
     "SYSTEMROOT",
+    "SYSTEMDRIVE",
     "WINDIR",
     "TEMP",
     "TMP",
@@ -40,7 +41,9 @@ class ShellInjectionError(Exception):
 
 
 def sanitize_worker_environment(source_env: dict[str, str] | None = None) -> dict[str, str]:
-    """Strip all credential, token, cloud, and Docker variables from worker environment."""
+    """Strip all unapproved, credential, token, cloud, and Docker variables from worker environment.
+    Strictly enforce that only keys in SAFE_PASSTHROUGH_ENV_VARS (or safe system essentials) are kept.
+    """
     if source_env is None:
         source_env = dict(os.environ)
 
@@ -52,6 +55,9 @@ def sanitize_worker_environment(source_env: dict[str, str] | None = None) -> dic
             continue
         # Drop if contains suspicious substrings
         if any(bad in k_upper for bad in ("KEY", "SECRET", "TOKEN", "CREDENTIAL", "PASS")):
+            continue
+        # Strictly enforce allowlist
+        if k_upper not in SAFE_PASSTHROUGH_ENV_VARS:
             continue
         sanitized[k] = v
 

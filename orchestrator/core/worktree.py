@@ -223,3 +223,20 @@ class HandoffManager:
                 f"Base commit moved for task {task_id}: handoff base was {data['base_sha']}, current is {current_base_sha}"
             )
         return data
+
+    def verify_candidate_evaluation(
+        self,
+        task_id: str,
+        expected_candidate_sha: str,
+    ) -> dict[str, Any]:
+        """Verify that testing/review evidence belongs strictly to expected_candidate_sha.
+        Rejects stale test or review evaluations if candidate SHA changed.
+        """
+        data = self.load_handoff(task_id)
+        recorded_head = data.get("head_sha")
+        if recorded_head != expected_candidate_sha:
+            raise HandoffVerificationError(
+                f"Stale evidence rejected for task {task_id}: recorded evaluation candidate {recorded_head} does not match expected {expected_candidate_sha}"
+            )
+        return data
+
