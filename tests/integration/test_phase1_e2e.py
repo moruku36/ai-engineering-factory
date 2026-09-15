@@ -1,9 +1,13 @@
-"""Integration test verifying Phase 1 Foundation E2E lifecycle."""
+"""Integration test verifying Phase 1 Foundation E2E lifecycle and Phase 3 Multi-Worker Concurrency."""
 
+import os
 import sys
+import time
 from pathlib import Path
 
 from orchestrator.adapters.manual import ManualAdapter
+from orchestrator.core.lease import RuntimeLeaseManager, TaskRuntimeEnvironment
+from orchestrator.core.scheduler import DAGScheduler
 from orchestrator.core.schema import (
     compute_spec_digest,
     parse_safe_yaml,
@@ -125,11 +129,6 @@ def test_phase3_multi_worker_timeline_and_benchmark(tmp_path):
     Verify timeline concurrency of 2 independent workers, serialization of dependent/conflicting tasks,
     and measure Single Agent vs 2-Worker throughput.
     """
-    import os
-    import time
-    from orchestrator.core.lease import RuntimeLeaseManager, TaskRuntimeEnvironment
-    from orchestrator.core.scheduler import DAGScheduler
-
     # 1. Setup 2 independent tasks and 1 dependent task
     tasks = [
         {

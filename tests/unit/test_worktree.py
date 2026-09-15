@@ -52,6 +52,7 @@ def test_handoff_save_and_resume_verification(tmp_path):
     task_id = "TASK-001"
     spec_digest = "a" * 64
     base_sha = "b" * 40
+    head_sha = "d" * 40
 
     mgr.save_handoff(
         task_id=task_id,
@@ -60,7 +61,7 @@ def test_handoff_save_and_resume_verification(tmp_path):
         spec_digest=spec_digest,
         policy_digest="c" * 64,
         base_sha=base_sha,
-        head_sha="d" * 40,
+        head_sha=head_sha,
         completed_steps=["step-1"],
         pending_steps=["step-2"],
         changed_paths=["src/foo.py"],

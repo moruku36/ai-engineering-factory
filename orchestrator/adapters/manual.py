@@ -1,7 +1,6 @@
 """Manual execution adapter for deterministic local and CI runs."""
 
 import hashlib
-import os
 import subprocess
 import time
 import uuid
@@ -10,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from orchestrator.adapters.base import ExecutionAdapter
-from orchestrator.core.policy import CommandNotAllowedError, PolicyEngine
+from orchestrator.core.policy import PolicyEngine
 from orchestrator.core.sandbox import sanitize_worker_environment, validate_command_argv
 
 
@@ -73,7 +72,7 @@ class ManualAdapter(ExecutionAdapter):
             )
             self.active_processes[run_id] = proc
             try:
-                stdout, stderr = proc.communicate(timeout=timeout_seconds)
+                proc.communicate(timeout=timeout_seconds)
                 exit_code = proc.returncode
                 val_status = "PASS" if exit_code == 0 else "FAIL"
             except subprocess.TimeoutExpired:

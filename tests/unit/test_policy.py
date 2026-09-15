@@ -1,13 +1,17 @@
 """Unit tests for security policy engine."""
 
+import sys
+
 import pytest
 
+from orchestrator.adapters.manual import ManualAdapter
 from orchestrator.core.policy import (
     ApprovalRequiredError,
     CommandNotAllowedError,
     HardDenyViolationError,
     PolicyEngine,
 )
+from orchestrator.core.sandbox import ShellInjectionError
 
 
 @pytest.fixture
@@ -81,10 +85,6 @@ def test_policy_digest_consistency(policy):
 
 
 def test_manual_adapter_integration(tmp_path):
-    import sys
-    from orchestrator.adapters.manual import ManualAdapter
-    from orchestrator.core.sandbox import ShellInjectionError
-
     manifest = {
         "id": "SMP-001",
         "output_artifacts": [{"path": "reports/out.txt"}],
