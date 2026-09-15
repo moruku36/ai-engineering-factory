@@ -1,0 +1,6 @@
+schema_version: "2020-12"
+id: "RULE-001"
+version: "1.0.0"
+scope: "builder"
+enforcement: "hard_deny"
+description: "Prohibit any writes or modifications outside the designated allowed_paths prefix."

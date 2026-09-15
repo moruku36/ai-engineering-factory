@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-engineering-factory/schemas/rule.schema.json",
+  "title": "AgentRule",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "version",
+    "scope",
+    "enforcement",
+    "description"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "2020-12"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^RULE-[0-9]{3,6}$"
+    },
+    "version": {
+      "type": "string"
+    },
+    "scope": {
+      "type": "string",
+      "enum": ["global", "builder", "tester", "reviewer", "orchestrator"]
+    },
+    "enforcement": {
+      "type": "string",
+      "enum": ["hard_deny", "require_approval", "advisory"]
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}
