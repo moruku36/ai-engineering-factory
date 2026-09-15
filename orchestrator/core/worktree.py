@@ -1,0 +1,225 @@
+"""Worktree governance, path inspection, and handoff resume engine."""
+
+import json
+import os
+import shutil
+import subprocess
+from datetime import UTC, datetime
+from pathlib import Path, PurePosixPath
+from typing import Any
+
+SAFE_RUNTIME_ROOT = Path(__file__).resolve().parent.parent.parent / "runtime-root"
+
+
+class PathSecurityError(Exception):
+    """Raised when path traversal, forbidden prefixes, or symlink escapes are detected."""
+
+
+class HandoffVerificationError(Exception):
+    """Raised when resuming from a handoff with invalid SHA, expired lease, or corrupted state."""
+
+
+def sanitize_relative_path(path_str: str) -> str:
+    """Validate and sanitize a path to ensure it is relative and does not escape via .. or UNC."""
+    # Check for UNC or drive letters
+    if path_str.startswith(("//", "\\\\")) or (len(path_str) > 1 and path_str[1] == ":"):
+        raise PathSecurityError(f"Absolute or UNC paths are strictly forbidden: {path_str}")
+
+    # Check for null bytes
+    if "\0" in path_str:
+        raise PathSecurityError(f"Null bytes in path detected: {path_str}")
+
+    # Normalize to forward slashes
+    normalized = path_str.replace("\\", "/")
+    parts = PurePosixPath(normalized).parts
+
+    if ".." in parts:
+        raise PathSecurityError(f"Path traversal detected ('..'): {path_str}")
+
+    if PurePosixPath(normalized).is_absolute():
+        raise PathSecurityError(f"Absolute paths are forbidden: {path_str}")
+
+    return normalized.lstrip("/")
+
+
+def validate_paths_against_policy(
+    changed_paths: list[str],
+    allowed_paths: list[str],
+    prohibited_paths: list[str],
+) -> None:
+    """Validate changed paths:
+    1. Sanitize against traversal.
+    2. Prohibited paths take precedence (deny-first).
+    3. Must match at least one prefix in allowed_paths (if allowed_paths is specified).
+    """
+    clean_prohibited = [sanitize_relative_path(p) for p in prohibited_paths]
+    clean_allowed = [sanitize_relative_path(p) for p in allowed_paths]
+
+    for path in changed_paths:
+        clean_path = sanitize_relative_path(path)
+
+        # Deny-first check
+        for denied in clean_prohibited:
+            if clean_path == denied or clean_path.startswith(denied.rstrip("/") + "/"):
+                raise PathSecurityError(
+                    f"Path '{clean_path}' matches prohibited path rule '{denied}'"
+                )
+
+        # Allow-list check
+        if clean_allowed:
+            allowed = False
+            for allowable in clean_allowed:
+                if clean_path == allowable or clean_path.startswith(allowable.rstrip("/") + "/"):
+                    allowed = True
+                    break
+            if not allowed:
+                raise PathSecurityError(
+                    f"Path '{clean_path}' is not within any allowed paths: {allowed_paths}"
+                )
+
+
+class WorktreeManager:
+    """Manages isolated git worktrees inside the runtime-root directory."""
+
+    def __init__(self, repo_root: Path | str, runtime_root: Path | str | None = None):
+        self.repo_root = Path(repo_root).resolve()
+        self.runtime_root = (
+            Path(runtime_root).resolve() if runtime_root else self.repo_root.parent / "runtime-root"
+        )
+        self.worktrees_dir = self.runtime_root / "worktrees"
+        self.worktrees_dir.mkdir(parents=True, exist_ok=True)
+
+    def create_worktree(self, task_id: str, branch: str, base_ref: str) -> Path:
+        """Create a dedicated git worktree inside runtime-root."""
+        worktree_path = self.worktrees_dir / task_id
+        if worktree_path.exists():
+            raise FileExistsError(f"Worktree path already exists: {worktree_path}")
+
+        cmd = [
+            "git",
+            "worktree",
+            "add",
+            "-b",
+            branch,
+            str(worktree_path),
+            base_ref,
+        ]
+        result = subprocess.run(cmd, cwd=str(self.repo_root), capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            raise RuntimeError(f"Failed to create git worktree: {result.stderr.strip()}")
+
+        return worktree_path
+
+    def remove_worktree(self, task_id: str) -> None:
+        """Prune and remove worktree."""
+        worktree_path = self.worktrees_dir / task_id
+        if worktree_path.exists():
+            cmd = ["git", "worktree", "remove", "--force", str(worktree_path)]
+            subprocess.run(cmd, cwd=str(self.repo_root), capture_output=True, text=True, check=False)
+            if worktree_path.exists():
+                shutil.rmtree(worktree_path, ignore_errors=True)
+
+    def check_dirty_status(self, worktree_path: Path) -> tuple[bool, list[str]]:
+        """Check whether worktree has uncommitted modifications and return changed paths."""
+        cmd = ["git", "status", "--porcelain"]
+        res = subprocess.run(cmd, cwd=str(worktree_path), capture_output=True, text=True, check=False)
+        if res.returncode != 0:
+            raise RuntimeError(f"Failed to inspect git status: {res.stderr.strip()}")
+
+        changed_files: list[str] = []
+        for line in res.stdout.splitlines():
+            if line.strip():
+                # Format: XY <file> or XY <file1> -> <file2>
+                parts = line[3:].strip().split(" -> ")
+                changed_files.extend(parts)
+
+        is_dirty = len(changed_files) > 0
+        return is_dirty, changed_files
+
+
+class HandoffManager:
+    """Manages durable resumption states and handoffs."""
+
+    def __init__(self, handoffs_dir: Path | str | None = None):
+        if handoffs_dir is None:
+            self.handoffs_dir = Path(__file__).resolve().parent.parent.parent / "state" / "handoffs"
+        else:
+            self.handoffs_dir = Path(handoffs_dir)
+        self.handoffs_dir.mkdir(parents=True, exist_ok=True)
+
+    def save_handoff(
+        self,
+        task_id: str,
+        run_id: str,
+        attempt: int,
+        spec_digest: str,
+        policy_digest: str,
+        base_sha: str,
+        head_sha: str | None,
+        completed_steps: list[str],
+        pending_steps: list[str],
+        changed_paths: list[str],
+        validations: list[dict[str, Any]],
+        artifacts: dict[str, str],
+        is_dirty: bool,
+        lease_id: str | None,
+        blocked_reason: str | None,
+        next_action: str,
+        required_approvals: list[str],
+    ) -> Path:
+        handoff_path = self.handoffs_dir / f"{task_id}.json"
+        now = datetime.now(UTC).isoformat()
+        handoff_data = {
+            "task_id": task_id,
+            "run_id": run_id,
+            "attempt": attempt,
+            "spec_digest": spec_digest,
+            "policy_digest": policy_digest,
+            "base_sha": base_sha,
+            "head_sha": head_sha,
+            "completed_steps": completed_steps,
+            "pending_steps": pending_steps,
+            "changed_paths": changed_paths,
+            "validations": validations,
+            "artifacts": artifacts,
+            "is_dirty": is_dirty,
+            "lease_id": lease_id,
+            "blocked_reason": blocked_reason,
+            "next_action": next_action,
+            "required_approvals": required_approvals,
+            "saved_at": now,
+        }
+        temp_file = handoff_path.with_suffix(".tmp")
+        with open(temp_file, "w", encoding="utf-8") as f:
+            json.dump(handoff_data, f, indent=2)
+        os.replace(temp_file, handoff_path)
+        return handoff_path
+
+    def load_handoff(self, task_id: str) -> dict[str, Any]:
+        handoff_path = self.handoffs_dir / f"{task_id}.json"
+        if not handoff_path.exists():
+            raise FileNotFoundError(f"Handoff record not found for task {task_id}")
+        with open(handoff_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    def verify_resume_preflight(
+        self,
+        task_id: str,
+        expected_spec_digest: str,
+        current_base_sha: str,
+    ) -> dict[str, Any]:
+        """Preflight verification prior to resuming:
+        - Must exist
+        - Spec digest must match
+        - Base SHA must match (if base changed, cannot blindly resume)
+        """
+        data = self.load_handoff(task_id)
+        if data["spec_digest"] != expected_spec_digest:
+            raise HandoffVerificationError(
+                f"Spec digest mismatch on resume for task {task_id}: {data['spec_digest']} != {expected_spec_digest}"
+            )
+        if data["base_sha"] != current_base_sha:
+            raise HandoffVerificationError(
+                f"Base commit moved for task {task_id}: handoff base was {data['base_sha']}, current is {current_base_sha}"
+            )
+        return data
