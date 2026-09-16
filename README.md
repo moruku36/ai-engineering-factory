@@ -222,16 +222,17 @@ stateDiagram-v2
 
 現在の実装には、主に以下が含まれています。
 
-- SchemaベースのTask / State管理
+- SchemaベースのTask / State管理（FormatCheckerによるRFC 3339日時形式検証付き）
 - Dependency-aware SchedulerとTask Lifecycle管理
-- Worktree、Path、Process、Runtime Resource管理（OS隔離は未実装）
-- 永続StateとRetry管理
-- 署名・単回消費の承認Token部品（Human本人認証は未実装）
-- Registered Commandによる実行境界
-- Manual / Test Adapter（Native実行は未実装として拒否）
-- Remote SHA確認と重複PR防止を含むGitHub Publisher
-- Secret Scan、依存関係整合性検査、Lint、Linux / Windows CI（CVE監査は未実装）
-- Operator CLI（`approve`と実行中の`cancel`は安全条件未達のため拒否）
+- 通信遮断型Linuxコンテナ隔離実行（`OfflineContainerRunner`）と安全な成果物回収（`ArtifactCollector`）
+- 独立検証器（`IndependentVerifier`）による実測 `candidate_sha` 検証（エージェント自己申告ログ排除）
+- 署名鍵と `ApproverRegistry` による本人認証付き承認発行・失効管理（CLI `approve`）
+- 2相コミットSQLiteジャーナルによるGitHub操作永続化とクラッシュ復旧照合
+- GitHub Rulesetによる `main` ブランチ保護（PR必須、CI成功必須、force push禁止）
+- 実行中タスクのプロセスツリー安全停止型キャンセル（CLI `cancel`）
+- Secret Scan、依存関係整合性確認 (`pip check`)、静的解析（Ruff）、Linux / Windows CI
+- Manual / Test Adapter（Native実行は公式SDK未整備のため `BLOCKED` として安全に拒否）
+
 
 ただし、すべてのOS、Agent Runtime、Cloud Provider、Infrastructure Workflowの組み合わせを検証済みという意味ではありません。
 
