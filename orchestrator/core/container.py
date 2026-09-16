@@ -146,7 +146,8 @@ class OfflineContainerRunner:
         if inputs.exists():
             shutil.rmtree(inputs)
 
-    def run(self, command_id: str, inputs: dict[str, bytes] | None = None) -> ContainerResult:
+    def run(self, command_id: str, inputs: dict[str, bytes] | None = None,
+            *, run_id: str | None = None) -> ContainerResult:
         """Run exact registered argv with an explicit, bounded flat input snapshot."""
         if command_id not in self.commands:
             raise ValueError("Unregistered container command")
@@ -165,7 +166,9 @@ class OfflineContainerRunner:
                 raise ContainerBoundaryError("Control root must be owner-only (mode 0700)")
         (self.root / "docker-config").mkdir(exist_ok=True, mode=0o700)
         self._preflight()
-        run_id = uuid.uuid4().hex
+        run_id = run_id or uuid.uuid4().hex
+        if not re.fullmatch(r"[0-9a-f]{32}", run_id):
+            raise ValueError("Invalid control-plane run ID")
         directory = self.root / run_id
         directory.mkdir(mode=0o700)
         snapshot = directory / "inputs"

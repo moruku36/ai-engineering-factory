@@ -11,13 +11,15 @@ PR #7の再評価で、OSによる実行隔離、本人認証を伴う承認、A
 ## 現在のCapability Milestone
 
 追加改修: [通信遮断型Linuxコンテナ実行](docs/operations/OFFLINE_CONTAINER_BOUNDARY.md)を実装。
-明示的な入力ファイルだけを渡すコマンド実行用の部品です。Native Adapter・承認・Run Loopとの接続は未完了で、全体の判定はMANUAL_ONLYのままです。
+明示的な入力ファイルだけを渡すコマンド実行用の部品です。
+[承認トークンとRun Loopの接続](docs/operations/APPROVED_CONTAINER_LOOP.md)を追加し、1件ずつの実行・結果保存・再起動時の回収に対応しました。
+本人認証付きの承認発行とNative Adapter接続は未完成で、全体の判定はMANUAL_ONLYのままです。
 
 - [ ] **Execution Isolation & Boundaries**  
-  Registered Command Execution、Path Containment、Process Tree Control、PID Reuse Protection、Task-scoped Runtime Resource、保持型Port Reservationは実装。OSによるファイル・ネットワーク隔離と実ワーカー検証は未完了。
+  Linuxの通信遮断型コンテナ実行と検証、保持型Port Reservationを実装。Nativeワーカーへの適用と他OSでの実行隔離は未完了。
 
 - [ ] **Approval, Trust & State Ledger**  
-  Cryptographically bound Approval Token、AtomicなSingle-use Consumption、Persistent SQLite State、CAS形式のState Transition、Retry Budget、Run Loopの一部を実装。セッション復旧、本人認証、ワーカーからの鍵・ストレージ隔離は未実装。CLI承認発行は停止。
+  単回承認トークンを隔離実行へ接続し、SQLiteへの結果保存・再起動時の照合を追加。本人認証、一般的な並列セッション復旧と鍵の配備は未完成。CLI承認発行は停止。
 
 - [ ] **Evidence & Quality Gates**  
   Secret Scan、依存関係整合性検査、Lint / Test CIを実装。CVE監査と独立した証跡検証は未実装。`doctor`はMANUAL_ONLYを返し、実行中ワーカーのCLIキャンセルは拒否。
