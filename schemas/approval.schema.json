@@ -74,6 +74,14 @@
     },
     "consumed": {
       "type": "boolean"
+    },
+    "key_id": {
+      "type": "string",
+      "pattern": "^key-[a-f0-9]{16,64}$"
+    },
+    "operator_signature": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
     }
   }
 }

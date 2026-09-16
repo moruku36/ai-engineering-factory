@@ -10,6 +10,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from orchestrator.core.auth import (
+    ApproverRegistry,
+    compute_operator_signature,
+)
 from orchestrator.core.schema import validate_against_schema
 
 
@@ -25,12 +29,21 @@ class ApprovalExpiredError(ApprovalVerificationError):
     """Raised when an approval token has expired."""
 
 
+class ApprovalRevokedError(ApprovalVerificationError):
+    """Raised when an approval token has been revoked."""
+
+
 def _compute_token_signature(token_data: dict[str, Any], secret_key: bytes) -> str:
     """Compute HMAC-SHA256 signature across all critical token fields."""
-    signed_fields = (
+    signed_fields = [
         "token_id", "action", "repository", "task_id", "head_sha", "target_ref",
         "argv_digest", "policy_hash", "plan_hash", "approved_by", "created_at", "expires_at",
-    )
+    ]
+    if "key_id" in token_data:
+        signed_fields.append("key_id")
+    if "operator_signature" in token_data:
+        signed_fields.append("operator_signature")
+
     canonical = json.dumps(
         {name: token_data[name] for name in signed_fields}, sort_keys=True, separators=(",", ":")
     )
@@ -40,7 +53,12 @@ def _compute_token_signature(token_data: dict[str, Any], secret_key: bytes) -> s
 class ApprovalManager:
     """Issues and atomically verifies/consumes approval tokens bound to execution context."""
 
-    def __init__(self, approvals_dir: Path | str | None = None):
+    def __init__(
+        self,
+        approvals_dir: Path | str | None = None,
+        registry: ApproverRegistry | None = None,
+        enforce_authentication: bool = False,
+    ):
         self._secret_key = os.environ.get("AI_FACTORY_APPROVAL_SECRET", "").encode("utf-8")
         if len(self._secret_key) < 32:
             raise ApprovalVerificationError("A provisioned control-plane signing key is required (minimum 32 bytes)")
@@ -50,6 +68,8 @@ class ApprovalManager:
             self.approvals_dir = Path(approvals_dir)
         self.approvals_dir.mkdir(parents=True, exist_ok=True)
         self.db_path = self.approvals_dir / "approvals.sqlite"
+        self.registry = registry or ApproverRegistry()
+        self.enforce_authentication = enforce_authentication or self.registry.is_configured
         self._init_db()
 
     def _get_connection(self) -> sqlite3.Connection:
@@ -77,10 +97,27 @@ class ApprovalManager:
                     created_at TEXT NOT NULL,
                     expires_at TEXT NOT NULL,
                     consumed INTEGER NOT NULL DEFAULT 0,
-                    consumed_at TEXT
+                    consumed_at TEXT,
+                    key_id TEXT,
+                    operator_signature TEXT,
+                    revoked INTEGER NOT NULL DEFAULT 0,
+                    revoked_at TEXT,
+                    revocation_reason TEXT
                 );
                 """
             )
+            # Ensure columns exist in case table was created previously without them
+            cursor = conn.execute("PRAGMA table_info(approvals);")
+            existing_cols = {row[1] for row in cursor.fetchall()}
+            for col, col_type in (
+                ("key_id", "TEXT"),
+                ("operator_signature", "TEXT"),
+                ("revoked", "INTEGER NOT NULL DEFAULT 0"),
+                ("revoked_at", "TEXT"),
+                ("revocation_reason", "TEXT"),
+            ):
+                if col not in existing_cols:
+                    conn.execute(f"ALTER TABLE approvals ADD COLUMN {col} {col_type};")
 
     def _get_token_path(self, token_id: str) -> Path:
         return self.approvals_dir / f"{token_id}.json"
@@ -159,6 +196,124 @@ class ApprovalManager:
 
         return token_data
 
+    def issue_authenticated_token(
+        self,
+        action: str,
+        repository: str,
+        task_id: str,
+        head_sha: str,
+        target_ref: str,
+        argv_digest: str,
+        policy_hash: str,
+        plan_hash: str,
+        approved_by: str,
+        operator_key: bytes | str,
+        expires_at: str,
+    ) -> dict[str, Any]:
+        """Issue a verified human-authenticated token cryptographically signed by approver."""
+        if not self.registry.is_configured:
+            raise ApprovalVerificationError("Approver authentication infrastructure is not configured (BLOCKED)")
+
+        key_id = self.registry.authenticate_and_authorize(approved_by, operator_key, action)
+        token_id = f"tok-{secrets.token_hex(16)}"
+        created_at = datetime.now(UTC).isoformat()
+
+        token_data: dict[str, Any] = {
+            "token_id": token_id,
+            "action": action,
+            "repository": repository,
+            "task_id": task_id,
+            "head_sha": head_sha,
+            "target_ref": target_ref,
+            "argv_digest": argv_digest,
+            "policy_hash": policy_hash,
+            "plan_hash": plan_hash,
+            "approved_by": approved_by,
+            "created_at": created_at,
+            "expires_at": expires_at,
+            "consumed": False,
+            "key_id": key_id,
+        }
+
+        operator_signature = compute_operator_signature(token_data, operator_key)
+        token_data["operator_signature"] = operator_signature
+
+        validate_against_schema(token_data, "approval.schema.json")
+        signature = _compute_token_signature(token_data, self._secret_key)
+
+        with self._get_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE;")
+            conn.execute(
+                """
+                INSERT INTO approvals (
+                    token_id, signature, action, repository, task_id,
+                    head_sha, target_ref, argv_digest, policy_hash, plan_hash,
+                    approved_by, created_at, expires_at, consumed,
+                    key_id, operator_signature, revoked
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 0);
+                """,
+                (
+                    token_id,
+                    signature,
+                    action,
+                    repository,
+                    task_id,
+                    head_sha,
+                    target_ref,
+                    argv_digest,
+                    policy_hash,
+                    plan_hash,
+                    approved_by,
+                    created_at,
+                    expires_at,
+                    key_id,
+                    operator_signature,
+                ),
+            )
+            conn.execute("COMMIT;")
+
+        token_path = self._get_token_path(token_id)
+        temp_path = token_path.with_suffix(".tmp")
+        with open(temp_path, "w", encoding="utf-8") as f:
+            json.dump(token_data, f, indent=2)
+        os.replace(temp_path, token_path)
+
+        return token_data
+
+    def revoke_token(self, token_id: str, reason: str = "") -> None:
+        """Revoke an approval token, preventing any future consumption."""
+        now_iso = datetime.now(UTC).isoformat()
+        with self._get_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE;")
+            cursor = conn.execute("SELECT consumed, revoked FROM approvals WHERE token_id = ?;", (token_id,))
+            row = cursor.fetchone()
+            if not row:
+                conn.execute("ROLLBACK;")
+                raise ApprovalVerificationError(f"Approval token '{token_id}' not found")
+            consumed, _revoked = row
+            if consumed:
+                conn.execute("ROLLBACK;")
+                raise ApprovalVerificationError(f"Cannot revoke already consumed token '{token_id}'")
+            conn.execute(
+                "UPDATE approvals SET revoked = 1, revoked_at = ?, revocation_reason = ? WHERE token_id = ?;",
+                (now_iso, reason, token_id),
+            )
+            conn.execute("COMMIT;")
+
+        token_path = self._get_token_path(token_id)
+        if token_path.exists():
+            try:
+                with open(token_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                data["revoked"] = True
+                data["revocation_reason"] = reason
+                temp_path = token_path.with_suffix(".tmp")
+                with open(temp_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2)
+                os.replace(temp_path, token_path)
+            except OSError:
+                pass
+
     def verify_and_consume_token(
         self,
         token_id: str,
@@ -176,7 +331,8 @@ class ApprovalManager:
             conn.execute("BEGIN IMMEDIATE;")
             cursor = conn.execute(
                 "SELECT token_id, signature, action, repository, task_id, head_sha, target_ref, "
-                "argv_digest, policy_hash, plan_hash, approved_by, created_at, expires_at, consumed "
+                "argv_digest, policy_hash, plan_hash, approved_by, created_at, expires_at, consumed, "
+                "key_id, operator_signature, revoked "
                 "FROM approvals WHERE token_id = ?;",
                 (token_id,),
             )
@@ -200,7 +356,14 @@ class ApprovalManager:
                 t_created,
                 t_expires,
                 t_consumed,
+                t_key_id,
+                t_op_sig,
+                t_revoked,
             ) = row
+
+            if t_revoked:
+                conn.execute("ROLLBACK;")
+                raise ApprovalRevokedError(f"Approval token '{token_id}' has been revoked")
 
             if t_consumed:
                 conn.execute("ROLLBACK;")
@@ -212,6 +375,15 @@ class ApprovalManager:
             if now > exp:
                 conn.execute("ROLLBACK;")
                 raise ApprovalExpiredError(f"Approval token '{token_id}' expired at {t_expires}")
+
+            # Enforce approver authentication when configured or requested
+            if self.enforce_authentication:
+                if not t_key_id or not t_op_sig:
+                    conn.execute("ROLLBACK;")
+                    raise ApprovalVerificationError(
+                        f"Unauthenticated legacy approval token '{token_id}' rejected: re-issuance required"
+                    )
+                self.registry.verify_token_identity(t_app_by, t_key_id, action)
 
             # Verify cryptographic HMAC signature
             token_dict = {
@@ -228,6 +400,11 @@ class ApprovalManager:
                 "created_at": t_created,
                 "expires_at": t_expires,
             }
+            if t_key_id:
+                token_dict["key_id"] = t_key_id
+            if t_op_sig:
+                token_dict["operator_signature"] = t_op_sig
+
             expected_sig = _compute_token_signature(token_dict, self._secret_key)
             if not hmac.compare_digest(t_sig, expected_sig):
                 conn.execute("ROLLBACK;")
