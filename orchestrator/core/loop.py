@@ -26,6 +26,8 @@ class RunLoopController:
         for method in ("start_task", "poll_task", "collect_results", "cancel_task"):
             if not callable(getattr(adapter, method, None)):
                 raise TypeError(f"Execution adapter must implement {method}")
+        if getattr(adapter, "synchronous", False) and max_workers != 1:
+            raise ValueError("Synchronous execution requires max_workers=1")
         self.task_manifests = {t["id"]: t for t in task_manifests}
         self.state_ledger = state_ledger
         self.lease_manager = lease_manager
@@ -37,7 +39,7 @@ class RunLoopController:
         self.active_sessions: dict[str, dict[str, Any]] = {}  # task_id -> {session_id, lease_id}
 
     def initialize_tasks(self) -> None:
-        """Initialize task records in ledger and advance to READY if eligible."""
+        """Load persisted states; adapter recovery never re-executes a task."""
         for tid in self.task_manifests:
             try:
                 state = self.state_ledger.get_state(tid)
@@ -52,7 +54,18 @@ class RunLoopController:
             # Initialization is not preflight or Human approval. Only a trusted
             # controller may advance persisted tasks to READY.
             if state["status"] == TaskStatus.RUNNING.value and tid not in self.active_sessions:
-                raise RuntimeError("Active session recovery requires reconciliation before dispatch")
+                recover = getattr(self.adapter, "recover_task", None)
+                lease = self.lease_manager.get_active_lease(tid)
+                if not callable(recover) or not lease:
+                    raise RuntimeError("Active session recovery requires reconciliation before dispatch")
+                task = self.task_manifests[tid]
+                validator = getattr(self.adapter, "validate_task_context", None)
+                if callable(validator):
+                    validator(task, state)
+                session_id = recover(task, task["worktree"])
+                self.active_sessions[tid] = {
+                    "session_id": session_id, "worker_id": lease["worker_id"], "epoch": lease["epoch"],
+                }
             self.scheduler.update_task_status(tid, TaskStatus(state["status"]))
 
     def step(self) -> bool:
@@ -85,6 +98,17 @@ class RunLoopController:
                 # remotely observed Human merge. Keep dependencies blocked.
                 self.scheduler.update_task_status(tid, TaskStatus.VALIDATING)
                 self.lease_manager.release_lease(tid, sess["worker_id"], epoch=sess["epoch"])
+                finished_tasks.append(tid)
+                work_done = True
+
+            elif status == "BLOCKED":
+                current = self.state_ledger.get_state(tid)
+                self.state_ledger.transition(
+                    tid, current["revision"], TaskStatus.BLOCKED,
+                    "Execution outcome requires operator reconciliation; do not redispatch",
+                )
+                self.scheduler.update_task_status(tid, TaskStatus.BLOCKED)
+                # Keep the lease: BLOCKED is not proof of successful execution.
                 finished_tasks.append(tid)
                 work_done = True
 
@@ -123,6 +147,11 @@ class RunLoopController:
             task = self.task_manifests[tid]
             if not task.get("worktree"):
                 raise ValueError("A preflight-verified worktree is required")
+            validator = getattr(self.adapter, "validate_task_context", None)
+            if callable(validator):
+                validator(task, self.state_ledger.get_state(tid))
+            timeout = getattr(self.adapter, "lease_timeout_seconds", None)
+            lease_timeout = timeout(task) if callable(timeout) else 60.0
             worker_id = f"worker-{tid}"
             pid = os.getpid()
 
@@ -132,7 +161,7 @@ class RunLoopController:
                     task_id=tid,
                     worker_id=worker_id,
                     pid=pid,
-                    timeout_seconds=60.0,
+                    timeout_seconds=lease_timeout,
                 )
             except (LeaseAcquisitionError, OSError):
                 continue

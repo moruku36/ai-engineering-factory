@@ -1,8 +1,9 @@
 # Offline Linux container boundary
 
 This is the first implementation step after the PR #7 review. Overall readiness
-remains **MANUAL_ONLY**. The native adapter and run loop do not invoke this runner
-yet; approval issuance remains blocked.
+remains **MANUAL_ONLY**. The [approved offline adapter](APPROVED_CONTAINER_LOOP.md)
+now connects it to a single-worker run loop. Native execution and authenticated
+approval issuance remain blocked.
 
 ## Scope
 
@@ -68,7 +69,7 @@ Docker semantics: [Running containers](https://docs.docker.com/engine/containers
 
 ## Remaining work
 
-Authenticated approval/protected keys; run-loop admission; automatic crash/lease
+Authenticated approval/protected keys; general concurrent admission; automatic crash/lease
 reconciliation; verified artifact import; native Antigravity transport; controlled
 model API networking; end-to-end acceptance and branch protection. AC-H01/H02 stay
 partial until the worker lifecycle is connected to these controls.

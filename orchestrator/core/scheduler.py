@@ -63,6 +63,9 @@ class DAGScheduler:
         old_status = self.task_statuses[task_id]
         self.task_statuses[task_id] = new_status
 
+        if new_status == TaskStatus.RUNNING:
+            self.active_tasks.add(task_id)
+
         if old_status == TaskStatus.RUNNING and new_status != TaskStatus.RUNNING:
             self.active_tasks.discard(task_id)
 

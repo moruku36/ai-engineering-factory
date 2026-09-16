@@ -79,4 +79,4 @@ jobs:
       - name: Require real boundary, timeout, concurrency and crash recovery tests
         run: |
           test -n "$FACTORY_TEST_IMAGE"
-          pytest -v tests/integration/test_container_acceptance.py
+          pytest -v tests/integration/test_container_acceptance.py tests/integration/test_approved_container_flow.py
