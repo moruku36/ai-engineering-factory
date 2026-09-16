@@ -1,6 +1,8 @@
 # PR #7 completion assessment
 
 Reviewed base: `2c6b1c5ba087dd57e62173e593efb8c9bfda4b5f` (2026-09-16).
+Subsequent main updates through `167a454` were merged during review, retaining
+the Japanese documentation, architecture diagrams and generic CLI repository detection.
 Verdict: **not complete; MANUAL_ONLY**. Component additions do not satisfy real
 isolation, authenticated Human approval, native execution or acceptance criteria.
 
@@ -46,11 +48,17 @@ installed or host identity changed during review.
 |AC-H08|PARTIAL|git/gh transport exists with new destination checks; tests mock subprocess, no native acceptance or persistent mutation reconciliation|
 |AC-H09|BLOCKED|No real Agent task→verified PR→Human merge→observed DONE trace|
 |AC-H10|BLOCKED|No two real isolated workers or crash-injected concurrent workload trace|
-|AC-H11|PENDING CI|Linux/Windows regression required on the exact repair head; see PR checks for final result|
+|AC-H11|PARTIAL|115 tests pass on each Linux/Windows CI job at repair head dc9901635b27d45d0d7f66b04dc3f19ce5e853a8; real native/isolation acceptance remains blocked|
 |AC-H12|BLOCKED|main protected=false at review; no authenticated/isolated operational boundary|
 
 The old handoff lists mocked adapter calls as real verification and labels missing
 remote protection PASS. Those claims are withdrawn; preserve the file as history.
+
+Validation: [CI run 35069179363](https://github.com/moruku36/ai-engineering-factory/actions/runs/35069179363)
+passed Ruff, secret scanning, dependency consistency and all 115 tests on both OSes.
+The dependency gate is not a vulnerability audit. The main branch still reported
+`protected: false` after the public-documentation merge. Local compileall passed;
+local full pytest was unavailable because dependency downloads failed with TLS errors.
 
 ## Remaining implementation sequence
 
