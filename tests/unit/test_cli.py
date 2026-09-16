@@ -2,8 +2,15 @@
 
 import sys
 
-from orchestrator.cli import main
+from orchestrator.cli import _parse_github_repository, main
 from orchestrator.core.state import StateLedger, TaskStatus
+
+
+def test_parse_github_repository():
+    assert _parse_github_repository("https://github.com/example/factory.git") == "example/factory"
+    assert _parse_github_repository("git@github.com:example/factory.git") == "example/factory"
+    assert _parse_github_repository("ssh://git@github.com/example/factory.git") == "example/factory"
+    assert _parse_github_repository("https://gitlab.com/example/factory.git") is None
 
 
 def test_cli_doctor_runs(capsys):
