@@ -186,7 +186,7 @@ class OfflineContainerRunner:
                 "--cgroupns=private", "--pids-limit=64", "--memory=256m",
                 "--memory-swap=256m", "--cpus=1", "--ulimit=nofile=128:128",
                 "--restart=no", "--no-healthcheck", "--log-driver=local",
-                "--log-opt=max-size=1m", "--log-opt=max-file=1",
+                "--log-opt=max-size=1m", "--log-opt=max-file=1", "--log-opt=compress=false",
                 "--tmpfs=/workspace:rw,nosuid,nodev,noexec,size=32m,mode=1777",
                 "--tmpfs=/tmp:rw,nosuid,nodev,noexec,size=16m,mode=1777",
                 "--mount", f"type=bind,src={snapshot},dst=/inputs,readonly,bind-recursive=disabled",
