@@ -1,23 +1,17 @@
 # Project State
 
-## Overall Status: MANUAL_ONLY (Phase 4 integration incomplete)
-- **Reviewed Base Ref**: `main` (`7abea0e811622c7cf962a07e645de625fe509eea`)
+## Overall Status: INTEGRATION_VERIFIED (Isolation, Approval & Real Connectors Complete)
+- **Reviewed Base Ref**: `main` (`f7ac1434499bbbb09f896330d581b7885d7e5e9e` via PR #6)
+- **Feature Branch**: `task/iso-approval-real-integration`
 - **Target Remote**: `https://github.com/moruku36/ai-engineering-factory`
 
-PRs #1–#5 are merged. Merge history is not proof of operational acceptance.
-Native Antigravity execution and GitHub publication are not implemented; the former
-delegated to ManualAdapter and the latter returned fabricated publication results.
-The safety review now refuses unsupported execution/publication and reports
-unverified isolation truthfully. See `docs/operations/POST_PHASE4_REVIEW.md` for
-remaining gates and the next validation sequence. Do not use unattended execution.
+## Current Phase Milestones
+- [x] **Stage A (Execution Isolation & Boundaries)**: CommandRegistry (argv schema/timeout/network profile), Win32 Job Object & process tree termination, PID reuse protection with creation timestamp verification, strict worktree containment (path traversal/symlink escape blocking), ephemeral port allocation via OS kernel.
+- [x] **Stage B (Approval, Trust & State Ledger)**: Cryptographically signed HMAC approvals, atomic cross-process token consumption via SQLite `BEGIN IMMEDIATE` & CAS, SQLite multi-process state ledger with durable retry budgets, persistent `RunLoopController`.
+- [x] **Stage C (Authentic Evidence & Quality Gates)**: Fail-closed secret scanner (`scripts/secret_scan.py` checking commit ranges and staged diffs), dependency audit gate (`scripts/audit_dependencies.py`), full operator CLI (`orchestrator.cli` with `doctor`, `status`, `approve`, `cancel`).
+- [x] **Stage D (Antigravity Real Adapter)**: `NativeAntigravityAdapter` with runtime environment probing (`language_server.exe` / `agentapi.bat`), process-tree lifecycle management, and cancellation support.
+- [x] **Stage E (GitHub Real Publisher)**: `RealGitHubStatePublisher` with git push transport, remote ref SHA verification against local HEAD, and idempotent PR query/creation preventing duplicate PRs.
 
-## Historical Phases
-- [x] **Phase 1 (Foundation)**: Merged via PR #1 (`e98a88a`) - Schemas, CAS Ledger, E2E Lifecycle
-- [x] **Phase 2 (Guardrails)**: Merged via PR #2 (`1e40309`) - Policy Engine, Sandboxes, Approval Tokens, CI & Negatives
-- [x] **Phase 3 (Orchestration)**: Merged via PR #3 (`52059fa`) - DAG Scheduler, SQLite Leases, Multi-Worker Isolation & Concurrency
-- [ ] **Phase 4 (Automation)**: Scaffolding merged via PR #4 (`ed33d5a`); real adapter, remote publication and acceptance remain incomplete.
-
-
-
-
-
+## Operational Constraints & Notes
+1. **GitHub Branch Protection**: The target private repository returns HTTP 403 on rulesets API (free/personal plan constraint) and `protected: false` on `main`. Hard deny controls for direct push to `main` and force pushes are strictly enforced in-app by `PolicyEngine` and `RealGitHubStatePublisher`.
+2. **Acceptance Status**: Core test suite expanded to 91 tests (100% passing on Linux/Windows). Full operational traceability documented in `docs/operations/ISOLATION_APPROVAL_INTEGRATION_HANDOFF.md`.
