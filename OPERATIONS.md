@@ -17,8 +17,12 @@
 The factory operator CLI is implemented under `orchestrator.cli`:
 
 ```bash
-# 1. System diagnostics and capability verification
+# 1. System diagnostics and capability verification.
+# The repository is auto-detected from GITHUB_REPOSITORY or origin when possible.
 python -m orchestrator.cli doctor
+
+# Explicit override for forks or non-standard environments
+python -m orchestrator.cli doctor --repository owner/repository --branch main
 
 # 2. Inspect active tasks and execution state
 python -m orchestrator.cli status [--state-dir <path>]
@@ -26,7 +30,7 @@ python -m orchestrator.cli status [--state-dir <path>]
 # 3. Issue a cryptographically signed human approval token
 python -m orchestrator.cli approve \
   --action task_execution \
-  --repository moruku36/ai-engineering-factory \
+  --repository owner/repository \
   --task-id FND-001 \
   --head-sha <commit_sha> \
   --target-ref refs/heads/main \
@@ -55,3 +59,9 @@ python scripts/audit_dependencies.py
 # Regression test suite
 pytest -v tests/
 ```
+
+## 5. Public Repository Safety
+- Never place credentials, approval secrets, raw session logs, runtime databases, or private environment files in Git.
+- Treat Issues, Pull Requests, task manifests, repository documents, and generated agent instructions as potentially untrusted input.
+- A public example is not an authorization boundary. Infrastructure apply/destroy, IAM changes, deployment, release, public exposure, credential operations, and merge still require explicit Human approval.
+- Do not assume server-side branch protection is configured. Verify it with `doctor` or the GitHub UI and keep Factory policy checks as a separate defense-in-depth layer.
