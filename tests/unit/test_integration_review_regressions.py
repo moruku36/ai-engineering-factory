@@ -64,10 +64,12 @@ def test_destructive_process_api_rejects_unowned_record():
 
 
 def test_port_is_reserved_until_owner_closes():
-    with reserve_ephemeral_port() as reservation:
-        with socket.socket() as competitor:
-            with pytest.raises(OSError):
-                competitor.bind(("127.0.0.1", reservation.port))
+    with (
+        reserve_ephemeral_port() as reservation,
+        socket.socket() as competitor,
+        pytest.raises(OSError),
+    ):
+        competitor.bind(("127.0.0.1", reservation.port))
     with socket.socket() as next_owner:
         next_owner.bind(("127.0.0.1", reservation.port))
 
@@ -109,10 +111,12 @@ def test_closed_pr_is_not_reported_as_new_success():
 
 
 def test_pr_create_zero_exit_still_requires_remote_evidence():
-    with patch("subprocess.run", side_effect=[completed("[]"), completed("not-a-url"),
-                                               completed("[]")]):
-        with pytest.raises(GitHubPRError, match="ambiguous"):
-            RealGitHubStatePublisher().create_or_update_pr("t", "main", "task/test", "b")
+    with (
+        patch("subprocess.run", side_effect=[completed("[]"), completed("not-a-url"),
+                                             completed("[]")]),
+        pytest.raises(GitHubPRError, match="ambiguous"),
+    ):
+        RealGitHubStatePublisher().create_or_update_pr("t", "main", "task/test", "b")
 
 
 class FixtureAdapter:
