@@ -14,7 +14,9 @@ def test_probe_antigravity_detects_installed_runtime():
     probe = probe_antigravity_runtime()
     assert "available" in probe
     assert "probe_timestamp" in probe
-    if probe["available"]:
+    assert probe["available"] is False
+    assert probe["version"] is None
+    if probe["detected"]:
         assert probe["binary_path"] is not None
         assert Path(probe["binary_path"]).exists()
     else:
@@ -41,22 +43,11 @@ def test_native_antigravity_lifecycle(tmp_path, monkeypatch):
         "spec": {"title": "Test Antigravity Task"},
         "allowed_paths": ["src/"],
     }
-    run_id = adapter.start_task(manifest, str(tmp_path))
-    assert run_id.startswith("agy-")
-
-    poll = adapter.poll_task(run_id)
-    assert poll["status"] == "RUNNING"
-
-    results = adapter.collect_results(run_id)
-    assert results["task_id"] == "TASK-001"
-    assert results["adapter"] == "NativeAntigravityAdapter"
-    assert results["status"] == "SUCCESS"
-
-    # Cancel test
-    run_id2 = adapter.start_task(manifest, str(tmp_path))
-    assert adapter.cancel_task(run_id2) is True
-    poll2 = adapter.poll_task(run_id2)
-    assert poll2["status"] == "CANCELLED"
+    with pytest.raises(NotImplementedError, match="transport"):
+        adapter.start_task(manifest, str(tmp_path))
+    assert adapter.runs == {}
+    with pytest.raises(NotImplementedError, match="transport"):
+        adapter.collect_results("never-started")
 
 
 def test_real_github_publisher_policy_blocks_main_push(tmp_path):
@@ -77,7 +68,9 @@ def test_real_github_publisher_verifies_remote_sha(tmp_path):
     def mock_subprocess(args, **kwargs):
         res = MagicMock()
         res.returncode = 0
-        if "rev-parse" in args:
+        if "get-url" in args:
+            res.stdout = "https://github.com/moruku36/ai-engineering-factory.git\n"
+        elif "rev-parse" in args:
             res.stdout = "a" * 40 + "\n"
         elif "push" in args:
             res.stdout = "pushed\n"
@@ -93,7 +86,7 @@ def test_real_github_publisher_pr_idempotency():
     publisher = RealGitHubStatePublisher()
 
     # Mock gh pr list returning an existing PR
-    existing_pr_json = '[{"number": 42, "url": "https://github.com/moruku36/ai-engineering-factory/pull/42", "headRefOid": "abc", "state": "OPEN"}]'
+    existing_pr_json = '[{"number": 42, "url": "https://github.com/moruku36/ai-engineering-factory/pull/42", "headRefOid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "state": "OPEN"}]'
 
     def mock_gh(args, **kwargs):
         res = MagicMock()

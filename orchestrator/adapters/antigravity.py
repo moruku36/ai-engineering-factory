@@ -1,9 +1,6 @@
 """Native Antigravity adapter using installed language server / agentapi runtime."""
 
 import os
-import subprocess
-import time
-import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -23,13 +20,17 @@ def probe_antigravity_runtime() -> dict[str, Any]:
     for c in candidates:
         if c.is_file():
             return {
-                "available": True,
+                "available": False,
+                "detected": True,
+                "status": "UNVERIFIED",
                 "binary_path": str(c),
-                "version": "0.1.0-installed",
+                "version": None,
                 "probe_timestamp": datetime.now(UTC).isoformat(),
             }
     return {
         "available": False,
+        "detected": False,
+        "status": "UNAVAILABLE",
         "binary_path": None,
         "version": None,
         "probe_timestamp": datetime.now(UTC).isoformat(),
@@ -46,21 +47,7 @@ class NativeAntigravityAdapter(ExecutionAdapter):
         self.controller = ProcessTreeController()
 
     def start_task(self, task_manifest: dict[str, Any], worktree_path: str) -> str:
-        if not self.probe["available"]:
-            raise RuntimeError("Antigravity runtime binary not available on host system")
-
-        run_id = f"agy-{uuid.uuid4().hex[:12]}"
-        self.runs[run_id] = {
-            "run_id": run_id,
-            "task_id": task_manifest["id"],
-            "worktree_path": worktree_path,
-            "manifest": task_manifest,
-            "status": "RUNNING",
-            "start_time": time.time(),
-            "validations": [],
-            "proc_record": None,
-        }
-        return run_id
+        raise NotImplementedError("Native task transport and OS isolation have not been implemented")
 
     def poll_task(self, run_id: str) -> dict[str, Any]:
         if run_id not in self.runs:
@@ -82,34 +69,7 @@ class NativeAntigravityAdapter(ExecutionAdapter):
         return True
 
     def collect_results(self, run_id: str) -> dict[str, Any]:
-        if run_id not in self.runs:
-            raise KeyError(f"Run ID {run_id} not found")
-        run_info = self.runs[run_id]
-        worktree = Path(run_info["worktree_path"])
-
-        candidate_sha = "0" * 40
-        changed_paths = []
-        try:
-            sha_res = subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(worktree), capture_output=True, text=True, check=False)
-            if sha_res.returncode == 0 and len(sha_res.stdout.strip()) == 40:
-                candidate_sha = sha_res.stdout.strip()
-            diff_res = subprocess.run(["git", "diff", "--name-only", "HEAD~1...HEAD"], cwd=str(worktree), capture_output=True, text=True, check=False)
-            if diff_res.returncode == 0:
-                changed_paths = [p for p in diff_res.stdout.splitlines() if p.strip()]
-        except (subprocess.SubprocessError, OSError):
-            pass
-
-        now = datetime.now(UTC).isoformat()
-        return {
-            "run_id": run_id,
-            "task_id": run_info["task_id"],
-            "status": "SUCCESS" if run_info["status"] != "CANCELLED" else "CANCELLED",
-            "candidate_sha": candidate_sha,
-            "changed_paths": changed_paths,
-            "timestamp": now,
-            "adapter": "NativeAntigravityAdapter",
-            "runtime": self.probe,
-        }
+        raise NotImplementedError("Native task results require a verified execution transport")
 
 
 class AntigravityAdapter(ExecutionAdapter):
@@ -121,13 +81,7 @@ class AntigravityAdapter(ExecutionAdapter):
         if mode == "manual":
             self._delegate = ManualAdapter(policy_engine=self.policy_engine)
         elif mode in ("native", "auto"):
-            probe = probe_antigravity_runtime()
-            if probe["available"]:
-                self._delegate = NativeAntigravityAdapter(policy_engine=self.policy_engine)
-            elif mode == "native":
-                raise NotImplementedError("Native Antigravity runtime unavailable on this host")
-            else:
-                self._delegate = ManualAdapter(policy_engine=self.policy_engine)
+            raise NotImplementedError("Native transport unavailable; manual mode requires explicit selection")
         else:
             raise ValueError(f"Unknown mode: {mode}")
 

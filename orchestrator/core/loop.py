@@ -23,6 +23,9 @@ class RunLoopController:
         base_sha: str | None = None,
         max_workers: int = 2,
     ):
+        for method in ("start_task", "poll_task", "collect_results", "cancel_task"):
+            if not callable(getattr(adapter, method, None)):
+                raise TypeError(f"Execution adapter must implement {method}")
         self.task_manifests = {t["id"]: t for t in task_manifests}
         self.state_ledger = state_ledger
         self.lease_manager = lease_manager
@@ -46,14 +49,10 @@ class RunLoopController:
                     base_sha=self.base_sha,
                 )
 
-            # Move from PROPOSED to READY if new
-            if state["status"] == TaskStatus.PROPOSED.value:
-                state = self.state_ledger.transition(
-                    task_id=tid,
-                    expected_revision=state["revision"],
-                    to_status=TaskStatus.READY,
-                    reason="Preflight requirements verified; ready for dispatch",
-                )
+            # Initialization is not preflight or Human approval. Only a trusted
+            # controller may advance persisted tasks to READY.
+            if state["status"] == TaskStatus.RUNNING.value and tid not in self.active_sessions:
+                raise RuntimeError("Active session recovery requires reconciliation before dispatch")
             self.scheduler.update_task_status(tid, TaskStatus(state["status"]))
 
     def step(self) -> bool:
@@ -64,35 +63,27 @@ class RunLoopController:
         finished_tasks = []
         for tid, sess in list(self.active_sessions.items()):
             session_id = sess["session_id"]
-            poll_res = self.adapter.poll_execution(session_id)
+            poll_res = self.adapter.poll_task(session_id)
             status = poll_res.get("status")
 
-            if status == "COMPLETED":
+            if status in ("COMPLETED", "SUCCESS"):
                 # Collect evidence
-                evidence = self.adapter.collect_evidence(session_id)
+                evidence = self.adapter.collect_results(session_id)
+                if evidence.get("status") not in ("COMPLETED", "SUCCESS"):
+                    raise RuntimeError("Adapter completion disagrees with collected result; reconcile run")
                 cur_state = self.state_ledger.get_state(tid)
 
                 # RUNNING -> VALIDATING -> REVIEW -> READY_FOR_MERGE
-                s1 = self.state_ledger.transition(
+                self.state_ledger.transition(
                     task_id=tid,
                     expected_revision=cur_state["revision"],
                     to_status=TaskStatus.VALIDATING,
                     reason="Execution finished, validating evidence",
                     candidate_sha=evidence.get("candidate_sha"),
                 )
-                s2 = self.state_ledger.transition(
-                    task_id=tid,
-                    expected_revision=s1["revision"],
-                    to_status=TaskStatus.REVIEW,
-                    reason="Validation passed, awaiting review",
-                )
-                self.state_ledger.transition(
-                    task_id=tid,
-                    expected_revision=s2["revision"],
-                    to_status=TaskStatus.READY_FOR_MERGE,
-                    reason="Independent review approved",
-                )
-                self.scheduler.update_task_status(tid, TaskStatus.DONE)  # In DAG scheduler, completion unblocks deps
+                # Worker completion is not independent validation/review or a
+                # remotely observed Human merge. Keep dependencies blocked.
+                self.scheduler.update_task_status(tid, TaskStatus.VALIDATING)
                 self.lease_manager.release_lease(tid, sess["worker_id"], epoch=sess["epoch"])
                 finished_tasks.append(tid)
                 work_done = True
@@ -130,6 +121,8 @@ class RunLoopController:
         dispatchable = self.scheduler.get_dispatchable_tasks()
         for tid in dispatchable:
             task = self.task_manifests[tid]
+            if not task.get("worktree"):
+                raise ValueError("A preflight-verified worktree is required")
             worker_id = f"worker-{tid}"
             pid = os.getpid()
 
@@ -155,9 +148,20 @@ class RunLoopController:
             )
 
             # Start execution via adapter
-            exec_info = self.adapter.start_execution(task)
+            try:
+                session_id = self.adapter.start_task(task, task["worktree"])
+            except Exception:
+                # A transport error may follow an external start. Retain the lease
+                # until reconciliation proves that no worker remains active.
+                current = self.state_ledger.get_state(tid)
+                self.state_ledger.transition(
+                    tid, current["revision"], TaskStatus.BLOCKED,
+                    "Start outcome uncertain; reconcile worker and lease before retry",
+                )
+                self.scheduler.update_task_status(tid, TaskStatus.BLOCKED)
+                raise
             self.active_sessions[tid] = {
-                "session_id": exec_info["session_id"],
+                "session_id": session_id,
                 "worker_id": worker_id,
                 "epoch": epoch,
             }

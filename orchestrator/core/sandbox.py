@@ -87,7 +87,7 @@ def sanitize_worker_environment(source_env: dict[str, str] | None = None) -> dic
 
     # Explicitly enforce safe defaults
     sanitized["CI"] = "false"
-    sanitized["FACTORY_WORKER_ISOLATED"] = "true"
+    sanitized["FACTORY_WORKER_ISOLATED"] = "false"
     return sanitized
 
 
@@ -120,15 +120,36 @@ def validate_path_containment(target_path: Path | str, root_dir: Path | str) -> 
     return resolved_target
 
 
-def reserve_ephemeral_port() -> int:
-    """Reserve an ephemeral port directly via the OS kernel network stack."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        port = s.getsockname()[1]
-        if not (1024 <= port <= 65535):
-            raise PortReservationError(f"Kernel assigned invalid port: {port}")
-        return port
+class PortReservation:
+    """Own a bound socket until close; hand this socket to a compatible worker.
+
+    Closing and rebinding the number is not an atomic handoff.
+    """
+
+    def __init__(self) -> None:
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            if sys.platform == "win32":
+                self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            self.socket.bind(("127.0.0.1", 0))
+            self.port = self.socket.getsockname()[1]
+        except OSError:
+            self.socket.close()
+            raise
+
+    def close(self) -> None:
+        self.socket.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args) -> None:
+        self.close()
+
+
+def reserve_ephemeral_port() -> PortReservation:
+    """Return a live reservation, not a port number whose socket was closed."""
+    return PortReservation()
 
 
 @dataclass
@@ -198,10 +219,25 @@ class CommandRegistry:
         return [defn.executable] + argv
 
 
+def _windows_process_api():
+    from ctypes import wintypes
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    kernel.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(ctypes.c_int64)] * 4
+    kernel.GetProcessTimes.restype = wintypes.BOOL
+    kernel.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+    kernel.GetExitCodeProcess.restype = wintypes.BOOL
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel.CloseHandle.restype = wintypes.BOOL
+    return kernel
+
+
 def _get_process_creation_time(pid: int) -> float:
     """Get process creation time as epoch timestamp with high precision to guard against PID reuse."""
     if sys.platform == "win32":
-        kernel32 = ctypes.windll.kernel32
+        kernel32 = _windows_process_api()
         PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
         handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
         if not handle:
@@ -229,12 +265,13 @@ def _get_process_creation_time(pid: int) -> float:
         try:
             stat_path = Path(f"/proc/{pid}/stat")
             if stat_path.exists():
-                parts = stat_path.read_text(encoding="utf-8").split()
-                if len(parts) > 21:
-                    return float(parts[21])
+                # comm (field 2) can contain spaces or parentheses.
+                parts = stat_path.read_text(encoding="utf-8").rsplit(")", 1)[1].split()
+                if len(parts) > 19:
+                    return float(parts[19])
         except (OSError, ValueError, IndexError):
             pass
-        return float(time.time())
+        return 0.0
 
 
 def _is_process_alive(pid: int, proc_handle: Any = None) -> bool:
@@ -243,19 +280,17 @@ def _is_process_alive(pid: int, proc_handle: Any = None) -> bool:
         return False
 
     if sys.platform == "win32":
-        kernel32 = ctypes.windll.kernel32
+        kernel32 = _windows_process_api()
         PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
         STILL_ACTIVE = 259
         handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
         if not handle:
-            err = kernel32.GetLastError()
-            ERROR_ACCESS_DENIED = 5
-            return err == ERROR_ACCESS_DENIED
+            return ctypes.get_last_error() != 87  # Unknown is not proof of exit.
         try:
             exit_code = ctypes.c_ulong()
             if kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
                 return exit_code.value == STILL_ACTIVE
-            return False
+            return True
         finally:
             kernel32.CloseHandle(handle)
     else:
@@ -269,8 +304,10 @@ def _is_process_alive(pid: int, proc_handle: Any = None) -> bool:
                         break
             os.kill(pid, 0)
             return True
-        except OSError:
+        except ProcessLookupError:
             return False
+        except OSError:
+            return True
 
 
 @dataclass
@@ -331,7 +368,7 @@ class ProcessTreeController:
             raise ProcessOwnershipError("Process ownership verification failed: Process is not alive")
 
         current_time = _get_process_creation_time(record.pid)
-        if current_time != 0.0 and abs(current_time - record.start_time) > 1.0:
+        if current_time == 0.0 or current_time != record.start_time:
             raise ProcessOwnershipError(
                 f"Process ownership verification failed: PID {record.pid} creation time mismatch (suspected PID reuse)"
             )
@@ -345,8 +382,12 @@ class ProcessTreeController:
 
     def terminate_tree(self, record: ProcessRecord) -> None:
         """Forcefully terminate process and all its child/descendant processes."""
+        # Validate ownership at the destructive entrypoint, not only in a helper test.
+        if self._owned_processes.get(record.pid) is not record:
+            raise ProcessOwnershipError("Process ownership verification failed: unknown process record")
         if not _is_process_alive(record.pid, record.proc):
             return
+        self.verify_ownership(record)
 
         if sys.platform == "win32":
             subprocess.run(

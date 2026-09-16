@@ -9,10 +9,11 @@ from orchestrator.core.state import StateLedger, TaskStatus
 def test_cli_doctor_runs(capsys):
     sys.argv = ["orchestrator.cli", "doctor"]
     exit_code = main()
-    assert exit_code == 0
+    assert exit_code == 2
     captured = capsys.readouterr()
     assert "=== Factory System Doctor ===" in captured.out
     assert "Python:" in captured.out
+    assert "MANUAL_ONLY" in captured.out
 
 
 def test_cli_status_and_cancel(tmp_path, capsys):
