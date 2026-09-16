@@ -2,49 +2,74 @@
 
 [![Security & Quality Gate CI](https://github.com/moruku36/ai-engineering-factory/actions/workflows/ci.yml/badge.svg)](https://github.com/moruku36/ai-engineering-factory/actions/workflows/ci.yml)
 
-> A safety-first, repository-centric harness for turning an engineering plan into isolated AI-agent tasks, validated changes, review evidence, and a human-approved pull request.
+> エンジニアリング計画を、分離されたAIエージェントのタスク、検証済みの変更、レビュー証跡、そして人間が承認するPull Requestへつなげるための、安全性を重視したリポジトリ中心の開発基盤です。
 
-**Project status: Experimental / integration-verified.** The core control-plane, isolation, approval, validation, Antigravity adapter, and GitHub publishing paths have been implemented and tested, but this project should still be treated as an engineering experiment rather than a production autonomous-development platform. See [PROJECT_STATE.md](PROJECT_STATE.md) for the current operational status and known limitations.
+**現在のステータス: Experimental / Integration Verified**  
+Control Plane、実行分離、Human Approval、検証、Antigravity Adapter、GitHub連携まで実装・テストしています。ただし、現時点では本番利用を前提とした完全自律開発プラットフォームではなく、AIエージェントを使ったソフトウェア開発を安全に工程化するための実験的な基盤です。現在の状態と制約は [PROJECT_STATE.md](PROJECT_STATE.md) を参照してください。
 
-## What is this?
+## これは何？
 
-AI coding tools are good at generating code, but longer engineering work becomes harder when several agents, sessions, branches, tests, and approval boundaries are involved. The main problem is no longer just *code generation*; it is coordinating work without losing state, letting agents overwrite each other, or silently crossing a security boundary.
+AIコーディングツールはコード生成そのものは得意ですが、作業が長期化し、複数のAgent、Session、Branch、Test、Review、Approvalが関わるようになると、単純なコード生成だけでは管理が難しくなります。
 
-AI Engineering Factory provides a lightweight control layer around that workflow:
+特に問題になるのは、次のような点です。
+
+- Agent同士が同じファイルや作業環境を壊してしまう
+- どこまで作業が終わったのか分からなくなる
+- Sessionが切り替わると前のAgentの判断や進捗が失われる
+- Agentが「完了した」と言っていても、本当にテストやレビューが通っているとは限らない
+- 複数Agentを増やした結果、かえってコストや調整作業が増える
+- Cloud、IAM、Credential、Deployなどの危険な操作まで自動化してしまう
+
+AI Engineering Factory は、こうした問題を解決するために、AIエージェント開発の周囲に**軽量なOrchestration / Governanceレイヤー**を追加します。
 
 ```text
-requirements / architecture
+要件定義 / アーキテクチャ設計
         ↓
-machine-readable tasks
+Machine-readableなTaskへ分割
         ↓
-isolated execution (branch + worktree + runtime namespace)
+Branch + Worktree + Runtime Namespaceで分離
         ↓
-build / test / independent review
+実装 / テスト / 独立レビュー
         ↓
-security + quality gates
+Security & Quality Gate
         ↓
-pull request + evidence
+Pull Request + Evidence
         ↓
-human approval and merge
+Human Review / Merge
 ```
 
-The repository itself is the long-lived source of truth. Task manifests, architecture decisions, rules, handoff notes, state projections, validation evidence, and Git history are intended to survive individual AI sessions and model context windows.
+このFactoryでは、GitHub Repositoryを長期的な **Source of Truth** として扱います。
 
-This is **not** another foundation model or a giant autonomous-agent framework. It is a deliberately small orchestration and governance layer that can sit around tools such as Google Antigravity and other coding agents through adapters.
+Task Manifest、Architecture Decision、Rule、Skill、進捗、Handoff、Validation Evidence、Git historyなどをRepositoryまたは永続Stateに残すことで、特定のAIモデルのMemoryや1回のSessionに依存しない開発を目指します。
 
-## Why build it?
+これは新しいFoundation Modelでも、巨大なAgent Frameworkでもありません。Google AntigravityなどのAIコーディング環境や他のAgent Runtimeの外側に置き、**設計 → タスク分割 → 実装 → 検証 → レビュー → PR** を安全かつ再現可能に回すための基盤です。
 
-The project is designed around five recurring problems in agentic engineering:
+## なぜ作ったのか
 
-- **Safe parallelism** — only independent tasks should run concurrently; tightly coupled work stays sequential.
-- **Isolation** — each task receives its own branch/worktree and runtime namespace so agents do not trample the same files, ports, processes, temporary data, or state.
-- **Durable memory** — important rules, task state, ADRs, progress, and handoff artifacts live in Git or durable runtime state rather than in one model's private memory.
-- **Verifiable execution** — task completion means tests, validation, review evidence, and policy checks passed, not merely that an agent said "done".
-- **Human control** — destructive operations, infrastructure changes, credentials, deployment, release, and merge remain explicit approval boundaries.
+このプロジェクトでは、Agentic Engineeringで繰り返し発生する5つの課題を中心に設計しています。
 
-The design intentionally optimizes for **Safety → Reproducibility → Observability → Maintainability → Cost efficiency → Parallel throughput → Automation**, in that order.
+- **安全な並列化**  
+  独立したTaskだけを並列実行し、依存関係が強い作業は無理に並列化しません。
 
-## Architecture at a glance
+- **実行環境の分離**  
+  TaskごとにBranch / Worktree / Runtime Namespaceを分け、ファイルだけでなくPort、Process、Temporary Data、Stateなどの衝突も防ぎます。
+
+- **永続的なMemory / Handoff**  
+  Rule、Task State、ADR、Progress、HandoffをGitや永続Stateに保存し、1つのモデルやSessionの内部Memoryに依存しません。
+
+- **検証可能な完了条件**  
+  Agentが「Done」と回答するだけでは完了としません。Test、Validation、Review Evidence、Policy Checkなど、Machine-readableな証跡を要求します。
+
+- **Human Control**  
+  Destructive Operation、Infrastructure Apply、Credential、IAM、Deployment、Release、Mergeなどの重要操作にはHuman Approvalを残します。
+
+設計上の優先順位は次の通りです。
+
+**Safety → Reproducibility → Observability → Maintainability → Cost Efficiency → Parallel Throughput → Automation**
+
+自動化そのものを目的にせず、安全性と再現性を優先します。
+
+## Architecture Overview
 
 ```mermaid
 flowchart TD
@@ -65,34 +90,40 @@ flowchart TD
     PR --> H2[Human Review / Merge]
 ```
 
-The architecture separates the **Control Plane** (schemas, policy, state, scheduling, approvals, publishing) from **Workers** (bounded execution). Antigravity is integrated through an adapter so the Factory core does not have to depend on one agent runtime.
+アーキテクチャは大きく **Control Plane** と **Worker Layer** に分かれます。
 
-For details, see [ARCHITECTURE.md](ARCHITECTURE.md), [AGENTS.md](AGENTS.md), and the [architecture documentation](docs/architecture/).
+Control PlaneはTask Schema、Policy、State、Scheduling、Approval、Publishingなどを担当し、Workerは割り当てられたTaskの実行だけを担当します。
 
-## Current capabilities
+AntigravityはAdapter経由で接続するため、Factory Coreが特定のAgent Runtimeだけに強く依存しない構造を目指しています。
 
-The current implementation includes:
+詳細は [ARCHITECTURE.md](ARCHITECTURE.md)、[AGENTS.md](AGENTS.md)、[docs/architecture/](docs/architecture/) を参照してください。
 
-- schema-driven task and state handling;
-- dependency-aware scheduling and task lifecycle management;
-- isolated worktree/path/process handling and runtime resource coordination;
-- persistent state and retry tracking;
-- cryptographically bound, single-use approval tokens;
-- registered-command execution boundaries;
-- a native Antigravity adapter plus manual/test adapters;
-- GitHub publishing with remote SHA verification and idempotent PR handling;
-- secret scanning, dependency auditing, linting, and Linux/Windows CI;
-- operator CLI commands for diagnostics, status, approval, and cancellation.
+## 現在できること
 
-Not every combination of agent runtime, OS, cloud provider, or infrastructure workflow has been validated. Check [PROJECT_STATE.md](PROJECT_STATE.md), [OPERATIONS.md](OPERATIONS.md), and the [compatibility matrix](docs/compatibility/matrix.md) before relying on a capability.
+現在の実装には、主に以下が含まれています。
 
-## Quick start for contributors
+- SchemaベースのTask / State管理
+- Dependency-aware SchedulerとTask Lifecycle管理
+- Worktree、Path、Process、Runtime Resourceの分離
+- 永続StateとRetry管理
+- Cryptographically bound / Single-useなHuman Approval Token
+- Registered Commandによる実行境界
+- Native Antigravity AdapterとManual / Test Adapter
+- Remote SHA確認と重複PR防止を含むGitHub Publisher
+- Secret Scan、Dependency Audit、Lint、Linux / Windows CI
+- `doctor` / `status` / `approve` / `cancel` を備えたOperator CLI
 
-Requirements: Python 3.11+, Git, and the development dependencies in this repository.
+ただし、すべてのOS、Agent Runtime、Cloud Provider、Infrastructure Workflowの組み合わせを検証済みという意味ではありません。
+
+実際に利用する前に [PROJECT_STATE.md](PROJECT_STATE.md)、[OPERATIONS.md](OPERATIONS.md)、[Compatibility Matrix](docs/compatibility/matrix.md) を確認してください。
+
+## Quick Start
+
+必要環境はPython 3.11以上、Git、およびこのRepositoryのDevelopment Dependenciesです。
 
 ```bash
 python -m venv .venv
-# Activate the virtual environment for your shell, then:
+# 利用しているShellに応じてvirtual environmentを有効化した後:
 pip install -r requirements.txt
 
 python -m orchestrator.cli doctor
@@ -102,62 +133,88 @@ python scripts/audit_dependencies.py
 pytest -v tests/
 ```
 
-The `doctor` command can inspect a specific GitHub repository with `--repository owner/repo`. Antigravity-specific execution also requires a compatible local Antigravity runtime and the host's own authentication/quota.
+`doctor` は `--repository owner/repo` を指定することで、特定のGitHub Repositoryを診断できます。
 
-Do **not** treat example tasks as authorization for cloud `apply`, deployment, credential changes, destructive operations, or production access. Those remain approval-gated by design.
+Antigravityを使った実行には、互換性のあるローカルAntigravity Runtimeと、利用者自身のAuthentication / Quotaが必要です。
 
-## Repository map
+なお、Sample Taskが存在していても、それをCloud `apply`、Deployment、Credential変更、Destructive Operation、Production Accessの許可として扱ってはいけません。これらは設計上Human Approval対象です。
 
-- `orchestrator/` — Control Plane, state, policy, scheduling, execution adapters, publishing, and CLI.
-- `schemas/` — machine-readable schemas for tasks, plans, results, state, approvals, and related artifacts.
-- `tasks/` — task manifests, plans, active/completed examples, and workflow inputs.
-- `state/` — versionable state projections and audit-oriented artifacts; transient runtime state stays outside Git.
-- `.agents/` — repository-local rules and reusable skills/procedures for agents.
-- `hooks/` — lifecycle and validation hooks.
-- `scripts/` — security/quality validation utilities.
-- `docs/` — architecture, ADRs, security, operations, compatibility, and design rationale.
-- `.github/workflows/` — CI quality and security gates.
+## Repository構成
 
-## Safety model
+- `orchestrator/` — Control Plane、State、Policy、Scheduling、Execution Adapter、Publishing、CLI
+- `schemas/` — Task、Plan、Result、State、ApprovalなどのMachine-readable Schema
+- `tasks/` — Task Manifest、Plan、Active / Completed Example、Workflow Input
+- `state/` — Version管理可能なState ProjectionやAudit Artifact。Transient Runtime StateはGit外に保存
+- `.agents/` — Agent向けRepository-local Rule、Skill、Procedure
+- `hooks/` — Lifecycle / Validation Hook
+- `scripts/` — Security / Quality Validation Utility
+- `docs/` — Architecture、ADR、Security、Operations、Compatibility、Design Rationale
+- `.github/workflows/` — CIによるQuality / Security Gate
 
-The Factory assumes that repositories, issues, pull requests, dependencies, prompts, and generated commands can all be untrusted inputs. The threat model therefore includes prompt injection, malicious repository content, command/shell injection, path traversal, secret leakage, unsafe dependency changes, and approval bypass attempts.
+## Safety Model
 
-Human approval is intentionally retained for high-impact actions such as infrastructure apply/destroy, IAM or credential changes, public exposure, deployment/release, Git history rewriting, and merge. Automatic merge and unattended production deployment are non-goals.
+Factoryは、Repository、Issue、Pull Request、Dependency、Prompt、Generated Commandなどをすべて潜在的にUntrusted Inputとして扱います。
 
-See [SECURITY.md](SECURITY.md) and [docs/security/threat-model.md](docs/security/threat-model.md).
+Threat Modelには、以下を含みます。
 
-## Non-goals
+- Prompt Injection
+- Malicious Repository Content
+- Malicious Issue / Pull Request
+- Command / Shell Injection
+- Path Traversal
+- Secret Leakage
+- Malicious Dependency
+- Approval Bypass
 
-This project is deliberately **not** trying to become:
+Infrastructure Apply / Destroy、IAM / Credential変更、Public Exposure、Deployment / Release、Git History Rewrite、MergeなどのHigh-impact Operationは、Human Approvalを必要とします。
 
-- a 20–50 agent swarm for its own sake;
-- fully unattended software development;
-- an automatic production deployment system;
-- an automatic merge bot;
-- a framework that depends on one model's private memory;
-- a microservice-heavy agent platform.
+Automatic MergeやUnattended Production Deploymentは、このFactoryの目標ではありません。
 
-The intended progression is incremental: make a single-agent workflow reliable first, add multi-agent execution only where tasks are genuinely independent, and automate orchestration only after the safety/evidence boundaries are stable.
+詳細は [SECURITY.md](SECURITY.md) と [Threat Model](docs/security/threat-model.md) を参照してください。
 
-## Design influences and references
+## やらないこと
 
-The architecture was informed by published work from Anthropic and Google on orchestrator-worker systems, parallel coding agents, long-running agent harnesses, planner/generator/evaluator patterns, structured handoffs, and multi-agent critique/verification loops.
+このプロジェクトでは、次のようなものを目標にしていません。
 
-See **[Design influences and references](docs/architecture/design-influences.md)** for the specific articles and how each idea maps into this repository.
+- Agent数を増やすこと自体を目的にした20〜50 Agent規模のSwarm
+- 完全無人のSoftware Development
+- ProductionへのAutomatic Deployment
+- Automatic Merge Bot
+- 特定モデルのPrivate Memoryへの全面依存
+- Factoryを作るためだけの巨大なMicroservices / Agent Platform
 
-This project is independently developed and is not affiliated with or endorsed by Anthropic, Google, OpenAI, or GitHub.
+まずSingle Agentでも確実に動作するWorkflowを作り、その後、本当に独立しているTaskだけMulti-Agent化し、安全性とEvidenceの境界が安定してからOrchestrationを自動化する、というIncremental Architectureを採用しています。
 
-## Project documentation
+## 設計の参考にした資料
+
+このFactoryの設計では、AnthropicやGoogleが公開している以下の考え方を参考にしています。
+
+- Orchestrator–Worker Pattern
+- Parallel Coding Agents
+- Long-running Agent Harness
+- Planner / Generator / Evaluator
+- Structured Handoff
+- Multi-Agent Critique / Verification Loop
+
+特に、複数Agentを無制限に増やすのではなく、**依存関係を分析し、本当に独立したTaskだけを並列化する**という考え方を重視しています。
+
+参考にした記事と、それぞれがFactoryのどの設計に反映されているかは、**[設計に影響した資料・参考文献](docs/architecture/design-influences.md)** に整理しています。
+
+このプロジェクトは独立して開発しているものであり、Anthropic、Google、OpenAI、GitHubの公式プロジェクトではありません。
+
+## Documentation
 
 - [Architecture](ARCHITECTURE.md)
-- [Security policy](SECURITY.md)
-- [Operations guide](OPERATIONS.md)
-- [Contributing guide](CONTRIBUTING.md)
-- [Agent specifications](AGENTS.md)
-- [Project state](PROJECT_STATE.md)
-- [ADRs](docs/adr/)
-- [Design influences](docs/architecture/design-influences.md)
+- [Security Policy](SECURITY.md)
+- [Operations Guide](OPERATIONS.md)
+- [Contributing Guide](CONTRIBUTING.md)
+- [Agent Specifications](AGENTS.md)
+- [Project State](PROJECT_STATE.md)
+- [ADR](docs/adr/)
+- [設計に影響した資料・参考文献](docs/architecture/design-influences.md)
 
 ## License
 
-No explicit open-source license has been selected yet. The repository is publicly viewable, but a license should be chosen before inviting third parties to reuse or redistribute the code as open source.
+現在、明示的なOpen Source Licenseは選択していません。
+
+Repository自体はPublicですが、第三者による再利用・改変・再配布をOpen Sourceとして許可する場合は、MIT LicenseやApache License 2.0など、利用方針に合ったLicenseを別途選択する必要があります。
