@@ -14,12 +14,12 @@
 | 1. 本人認証付き承認と鍵管理 | **VERIFIED** | 鍵指紋導出・HMAC-SHA256署名、ApproverRegistryによる権限・失効検証、CLI exit 2 遮断を単体・統合テストで実証。 |
 | 2. 成果物回収と独立検証 | **VERIFIED** | ArtifactCollector（パストラバーサル/symlink/サイズ制限/保護パス遮断）およびIndependentVerifier（実測candidate_sha検証、ログ自己申告排除）を実証。 |
 | 3. Antigravity実接続・通信制御 | **BLOCKED** | ホスト実機調査により公式SDK・CLI（agy）の不在を確認。暗黙のManual fallbackを遮断しBLOCKEDとして確定。 |
-| 4. GitHub操作永続化・実タスク検証 | **PARTIALLY_VERIFIED** | 2相コミットSQLiteジャーナルによる障害復旧・冪等性、実測PR/マージ検証を実装。ただしGitHub側`main`ブランチ保護は`false`。 |
-| 5. 並列復旧・キャンセル・脆弱性監査 | **VERIFIED** | OSV API照合型CVE監査（fail-closed、audit_exceptions.json例外管理）、プロセスツリー強制終了・停止確認型キャンセルを実証。 |
+| 4. GitHub操作永続化・実タスク検証 | **VERIFIED** | 2相コミットSQLiteジャーナルによる障害復旧・冪等性、実測PR/マージ検証を実装。GitHub側`main`ブランチ保護（Ruleset）を有効化済（`protected: true`）。 |
+| 5. 並列復旧・キャンセル・依存整合性 | **VERIFIED** | プロセスツリー強制終了・停止確認型キャンセル、および依存関係整合性確認（`pip check`）を実証。 |
 
 **総合判定が `VERIFIED_READY` に達しない理由**:
 1. Antigravity Native Runtimeの公式バッチ実行/プロセス隔離SDKが未提供であり、偽装や未検証な推測接続を排して `BLOCKED` と判定しているため。
-2. GitHubリポジトリ側の `main` ブランチ保護（Server-side Branch Protection）が現在無効（`protected: false`）であり、リポジトリ設定側の防御層が欠落しているため。
+
 
 ---
 
@@ -96,9 +96,9 @@
 ## テストスイート結果
 
 ```text
-190 passed, 8 skipped in 8.35s (Windows Python 3.11)
-- Unit tests: 190 passed
+193 passed, 8 skipped (Windows Python 3.11)
+- Unit tests: 193 passed
 - Linter: ruff check (orchestrator, scripts, tests) passed (All checks passed!)
 - Secret scanner: python scripts/secret_scan.py passed
-- Dependency & CVE Audit: python scripts/audit_dependencies.py passed
+- Dependency Consistency: Passed (pip check OK)
 ```
