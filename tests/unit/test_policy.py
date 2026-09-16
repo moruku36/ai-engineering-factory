@@ -119,15 +119,15 @@ def test_antigravity_adapter(tmp_path):
         "id": "AUT-001",
         "output_artifacts": [],
     }
-    adapter = AntigravityAdapter(mode="auto")
+    adapter = AntigravityAdapter(mode="manual")
     run_id = adapter.start_task(manifest, str(tmp_path))
 
     val = adapter.execute_validation_step(run_id, "python", [sys.executable, "-c", "exit(0)"])
     assert val["status"] == "PASS"
 
     res = adapter.collect_results(run_id)
-    assert res["adapter"] == "AntigravityAdapter"
-    assert res["mode"] == "auto"
+    assert res["adapter"] == "ManualAdapter"
+    assert res["mode"] == "manual"
     assert res["status"] == "SUCCESS"
 
 
@@ -142,14 +142,13 @@ def test_github_state_publisher_idempotency():
     existing = [
         {"number": 42, "url": "https://github.com/moruku36/ai-engineering-factory/pull/42", "headRefName": "phase/p4-automation", "baseRefName": "main"}
     ]
-    res = publisher.create_or_update_pr(
-        title="feat: Phase 4",
-        base_branch="main",
-        head_branch="phase/p4-automation",
-        body="test",
-        existing_prs=existing,
-    )
-    assert res["action"] == "updated"
-    assert res["pr_number"] == 42
+    with pytest.raises(NotImplementedError, match="GitHub PR transport"):
+        publisher.create_or_update_pr(
+            title="feat: Phase 4",
+            base_branch="main",
+            head_branch="phase/p4-automation",
+            body="test",
+            existing_prs=existing,
+        )
 
 

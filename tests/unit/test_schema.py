@@ -147,7 +147,7 @@ def test_environment_capability_probe():
     assert report["python"]["status"] == CapabilityStatus.VERIFIED
     assert "git" in report
     assert "isolation" in report
-    assert report["isolation"]["status"] == CapabilityStatus.VERIFIED
+    assert report["isolation"]["status"] == CapabilityStatus.MANUAL_ONLY
 
 
 def test_plan_ingestion_engine():

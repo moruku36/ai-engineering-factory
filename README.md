@@ -2,6 +2,11 @@
 
 Autonomous AI Engineering Factory for multi-agent software development, verification, and governance.
 
+**Current readiness: MANUAL_ONLY.** Phase 1–4 PRs are merged, but native
+Antigravity execution, GitHub publication and security acceptance are incomplete.
+See [the post-Phase-4 review](docs/operations/POST_PHASE4_REVIEW.md) before running
+workers. The manual adapter is for trusted local fixtures, not an OS sandbox.
+
 ## Overview
 AI Engineering Factory is a robust, schema-driven, multi-agent development system that executes structured engineering tasks with strict security guardrails, verifiable state machines, and human-in-the-loop approvals.
 

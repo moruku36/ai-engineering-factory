@@ -1,5 +1,6 @@
 """SQLite-backed transactional runtime leases with heartbeat, epoch, and process liveness tracking."""
 
+import ctypes
 import os
 import sqlite3
 import time
@@ -18,12 +19,31 @@ def is_process_alive(pid: int) -> bool:
     """Check if process with given PID is still running on the host OS."""
     if pid <= 0:
         return False
+    if os.name == "nt":
+        # os.kill(pid, 0) terminates processes on Windows. Query only.
+        from ctypes import wintypes
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel.WaitForSingleObject.restype = wintypes.DWORD
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        handle = kernel.OpenProcess(0x00100000, False, pid)  # SYNCHRONIZE only
+        if not handle:
+            # Access denied/unknown errors must not authorize reassignment.
+            return ctypes.get_last_error() != 87  # ERROR_INVALID_PARAMETER: no PID
+        try:
+            return kernel.WaitForSingleObject(handle, 0) != 0
+        finally:
+            kernel.CloseHandle(handle)
     try:
-        # On Windows and Unix, signal 0 does not kill the process but performs error checking
         os.kill(pid, 0)
         return True
-    except OSError:
+    except ProcessLookupError:
         return False
+    except OSError:
+        return True  # Unknown/access denied is not proof that the process exited.
 
 
 class RuntimeLeaseManager:
@@ -60,6 +80,9 @@ class RuntimeLeaseManager:
                 )
                 """
             )
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS lease_epochs (task_id TEXT PRIMARY KEY, epoch INTEGER NOT NULL)"
+            )
             conn.commit()
 
     def acquire_lease(
@@ -72,6 +95,7 @@ class RuntimeLeaseManager:
         """Acquire an exclusive lease for task_id. Returns epoch on success."""
         now = time.time()
         with self._get_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM leases WHERE task_id = ?", (task_id,))
             row = cursor.fetchone()
@@ -106,7 +130,10 @@ class RuntimeLeaseManager:
                     (worker_id, new_epoch, now, pid, now, timeout_seconds, task_id),
                 )
             else:
-                new_epoch = 1
+                prior = cursor.execute(
+                    "SELECT epoch FROM lease_epochs WHERE task_id = ?", (task_id,)
+                ).fetchone()
+                new_epoch = prior["epoch"] + 1 if prior else 1
                 cursor.execute(
                     """
                     INSERT INTO leases (task_id, worker_id, epoch, heartbeat_ts, pid, acquired_at, timeout_seconds)
@@ -115,6 +142,10 @@ class RuntimeLeaseManager:
                     (task_id, worker_id, new_epoch, now, pid, now, timeout_seconds),
                 )
 
+            cursor.execute(
+                "INSERT OR REPLACE INTO lease_epochs (task_id, epoch) VALUES (?, ?)",
+                (task_id, new_epoch),
+            )
             conn.commit()
             return new_epoch
 
@@ -122,14 +153,17 @@ class RuntimeLeaseManager:
         """Update lease heartbeat timestamp."""
         now = time.time()
         with self._get_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT epoch, worker_id FROM leases WHERE task_id = ?",
+                "SELECT epoch, worker_id, heartbeat_ts, timeout_seconds FROM leases WHERE task_id = ?",
                 (task_id,),
             )
             row = cursor.fetchone()
             if row is None or row["epoch"] != epoch or row["worker_id"] != worker_id:
                 raise LeaseExpiredError(f"Heartbeat rejected for task {task_id}: lease lost or epoch mismatch")
+            if now - row["heartbeat_ts"] > row["timeout_seconds"]:
+                raise LeaseExpiredError(f"Heartbeat rejected for task {task_id}: lease expired")
 
             cursor.execute(
                 "UPDATE leases SET heartbeat_ts = ? WHERE task_id = ?",
