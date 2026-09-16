@@ -134,6 +134,8 @@ class OfflineContainerRunner:
         if identity is None and not record.get("container_id"):
             raise ContainerBoundaryError("Create outcome uncertain; retain journal for reconciliation")
         if identity:
+            record["container_id"] = identity
+            self._save(record)
             self._call("container", "rm", "--force", "--volumes", identity)
         if self._find_owned(record) is not None:
             raise ContainerBoundaryError("Container cleanup is unconfirmed")

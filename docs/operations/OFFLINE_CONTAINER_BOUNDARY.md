@@ -29,6 +29,10 @@ select extra Docker flags, executables, network access or host mounts.
   supervisor. If create timed out and no container is visible, the outcome remains
   uncertain and the journal is retained.
 
+Serialize operator recovery for a given run; do not reconcile it concurrently with
+normal execution. A recovered container ID is persisted before removal so cleanup
+can be repeated after another controller crash.
+
 Control root must be controller-owned mode 0700 outside the source repository.
 Journals must remain inaccessible to workers. Docker administrators and the kernel
 are trusted; a shared-kernel container is not a VM boundary. Windows Docker Desktop,
@@ -56,6 +60,7 @@ uses a fixed official Python image digest and verifies actual containers:
 2. Timeout removes the container with a long-lived child process.
 3. Concurrent workers have independent scratch files.
 4. A killed controller's worker is removed by a fresh controller from its journal.
+5. A failed command retains its nonzero exit code and stderr output.
 
 The ordinary Linux/Windows suite explicitly skips these Docker tests. Only the
 dedicated required-image job establishes real isolation evidence, not mocked calls.

@@ -116,3 +116,19 @@ def test_image_implicit_volumes_rejected(tmp_path):
     ])
     with pytest.raises(ContainerBoundaryError, match="implicit volumes"):
         boundary._preflight()
+
+
+def test_recovered_create_identity_survives_repeated_cleanup(tmp_path):
+    boundary = runner(tmp_path)
+    record = {"run_id": "c" * 32, "name": "factory-" + "c" * 32,
+              "owner": "ours", "cleanup": "PENDING"}
+    (boundary.root / record["run_id"]).mkdir(parents=True)
+    boundary._save(record)
+    boundary._find_owned = Mock(side_effect=[CID, None, None, None])
+    boundary._call = Mock(return_value="")
+    boundary.reconcile(record["run_id"])
+    boundary.reconcile(record["run_id"])
+    saved = json.loads((boundary.root / record["run_id"] / "record.json").read_text())
+    assert saved["container_id"] == CID
+    assert saved["cleanup"] == "CONFIRMED"
+    boundary._call.assert_called_once_with("container", "rm", "--force", "--volumes", CID)
