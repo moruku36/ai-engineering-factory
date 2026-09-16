@@ -3,7 +3,6 @@
 import re
 import subprocess
 import sys
-from pathlib import Path
 
 # High confidence secret patterns
 SECRET_PATTERNS = [
@@ -23,13 +22,22 @@ ALLOWED_TEST_FIXTURE_SNIPPETS = {
 
 
 def run_git_command(args: list[str]) -> str:
-    res = subprocess.run(args, capture_output=True, text=True, check=False)
+    res = subprocess.run(
+        args,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
     if res.returncode != 0:
         raise RuntimeError(f"Git command failed (exit code {res.returncode}): {' '.join(args)}\n{res.stderr}")
-    return res.stdout
+    return res.stdout or ""
 
 
 def scan_text(text: str, source_name: str) -> list[str]:
+    if not text:
+        return []
     found = []
     for line in text.splitlines():
         # Check if line contains known test fixture string
@@ -46,7 +54,14 @@ def scan_all() -> int:
     try:
         # Determine diff range
         # Check if origin/main exists
-        res = subprocess.run(["git", "rev-parse", "--verify", "origin/main"], capture_output=True, check=False)
+        res = subprocess.run(
+            ["git", "rev-parse", "--verify", "origin/main"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
         if res.returncode == 0:
             diff_range = "origin/main...HEAD"
         else:
@@ -54,7 +69,7 @@ def scan_all() -> int:
 
         diff_output = run_git_command(["git", "diff", diff_range])
         staged_output = run_git_command(["git", "diff", "--cached"])
-    except Exception as e:
+    except (RuntimeError, subprocess.SubprocessError, OSError) as e:
         print(f"SECRET SCAN ERROR: Failed to run git diff checks: {e}", file=sys.stderr)
         return 2  # Fail closed
 
