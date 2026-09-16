@@ -1,44 +1,70 @@
 # Project State
 
-## Overall Status: EXPERIMENTAL / INTEGRATION_VERIFIED
+## 現在のステータス: EXPERIMENTAL / INTEGRATION_VERIFIED
 
-The major isolation, approval-integrity, validation, Antigravity-adapter, and GitHub-publisher stages have been merged into `main` through PR #7. The project is suitable for continued engineering validation, but it is **not presented as a production-certified autonomous development platform**.
+主要なExecution Isolation、Approval Integrity、Validation、Antigravity Adapter、GitHub Publisherの実装はPR #7までに`main`へ統合されています。
 
-This file is the current high-level status summary. Historical review and handoff documents under `docs/operations/` describe the state at the commit they reviewed; later integration work can supersede older readiness statements.
+継続的な技術検証を行える段階には到達していますが、現時点では**本番利用向けに認証・保証された完全自律開発プラットフォームではありません**。
 
-## Current Capability Milestones
+このファイルは現在のHigh-level Statusをまとめたものです。`docs/operations/`配下のReview / Handoff Documentは、それぞれが確認したCommit時点の状態を記録しています。その後に統合された実装によって、古いReadiness判定が更新されている場合があります。
 
-- [x] **Execution Isolation & Boundaries**: registered-command execution, path containment, process-tree control, PID-reuse protection, task-scoped runtime resources, and ephemeral port allocation.
-- [x] **Approval, Trust & State Ledger**: cryptographically bound approval tokens, atomic single-use consumption, persistent SQLite state, CAS-style transitions, retry budgets, and a persistent run-loop controller.
-- [x] **Evidence & Quality Gates**: fail-closed secret scanning, dependency audit, lint/test CI, real Git/diff evidence paths, and operator CLI diagnostics/status/approval/cancellation commands.
-- [x] **Antigravity Integration**: native runtime probing/adapter plus manual/test adapters behind an execution abstraction.
-- [x] **GitHub Integration**: publisher path with remote SHA verification and idempotent PR query/creation behavior.
-- [x] **Cross-platform CI**: Linux and Windows validation are configured in GitHub Actions.
+## 現在のCapability Milestone
 
-## Current Operational Constraints
+- [x] **Execution Isolation & Boundaries**  
+  Registered Command Execution、Path Containment、Process Tree Control、PID Reuse Protection、Task-scoped Runtime Resource、Ephemeral Port Allocationを実装。
 
-1. **Server-side protection is not currently enabled on `main`.** As of 2026-09-16, the GitHub branch API reports `protected: false`. Project policy and publisher code still hard-deny direct pushes to `main` and force pushes, but repository settings should be treated as a separate defense-in-depth control.
-2. **The project remains experimental.** Passing unit/integration tests does not establish that every supported OS, Antigravity release, agent model, repository layout, or failure mode has been validated.
-3. **Antigravity execution depends on the host environment.** Native sessions require compatible locally installed runtime components plus the host's own authentication/quota. The Factory must not fabricate unsupported SDK/CLI capabilities.
-4. **High-impact operations remain approval-gated.** Cloud infrastructure apply/destroy, IAM or credential changes, public exposure, deployment, release, Git history rewriting, and merge require explicit Human approval.
-5. **GitHub is the durable engineering source of truth, not the runtime scratch area.** Active databases, process metadata, leases, raw session logs, and credentials belong outside the repository runtime boundary.
-6. **No explicit open-source license has been selected yet.** The repository is public, but reuse/redistribution terms should be decided before presenting it as a reusable open-source project.
+- [x] **Approval, Trust & State Ledger**  
+  Cryptographically bound Approval Token、AtomicなSingle-use Consumption、Persistent SQLite State、CAS形式のState Transition、Retry Budget、Persistent Run Loop Controllerを実装。
 
-## Documentation Precedence
+- [x] **Evidence & Quality Gates**  
+  Fail-closed Secret Scan、Dependency Audit、Lint / Test CI、実Git / Diff Evidence、Operator CLIの`doctor` / `status` / `approve` / `cancel`を実装。
 
-When status documents disagree, use the following order:
+- [x] **Antigravity Integration**  
+  Native Runtime Probe / Adapterと、Manual / Test AdapterをExecution Abstractionの背後に実装。
 
-1. current `main` implementation and CI results;
-2. this `PROJECT_STATE.md` summary;
-3. the newest dated handoff/review document for the subsystem in question;
-4. older phase/review records as historical evidence only.
+- [x] **GitHub Integration**  
+  Remote SHA VerificationとIdempotentなPR Query / Creationを含むPublisher Pathを実装。
 
-The earlier [`POST_PHASE4_REVIEW.md`](docs/operations/POST_PHASE4_REVIEW.md) intentionally records a stricter pre-integration checkpoint. The later [`ISOLATION_APPROVAL_INTEGRATION_HANDOFF.md`](docs/operations/ISOLATION_APPROVAL_INTEGRATION_HANDOFF.md) records the subsequent hardening and real-adapter work that was later merged.
+- [x] **Cross-platform CI**  
+  GitHub ActionsでLinux / WindowsのValidationを構成。
 
-## Next Public-Readiness Actions
+## 現在のOperational Constraint
 
-- Choose and add an explicit software license if third-party reuse is intended.
-- Enable server-side `main` protection / required checks when repository settings permit it.
-- Keep the compatibility matrix tied to versions that have actually been exercised.
-- Validate real agent runs first in disposable repositories before using the Factory against important projects.
-- Add measured wall-clock, retry, CI-failure, human-review, and cost-per-merged-task evidence before claiming multi-agent productivity gains.
+1. **`main`のServer-side Protectionは現在有効ではありません。**  
+   2026-09-16時点でGitHub Branch APIは`protected: false`を返しています。Project PolicyとPublisher CodeではDirect Push to `main`およびForce PushをHard Denyしていますが、Repository Settings側のProtectionは別のDefense-in-depth Controlとして扱う必要があります。
+
+2. **Projectは引き続きExperimentalです。**  
+   Unit / Integration TestがPassしていても、すべてのOS、Antigravity Release、Agent Model、Repository Layout、Failure Modeを検証済みという意味ではありません。
+
+3. **Antigravity ExecutionはHost Environmentに依存します。**  
+   Native Sessionには互換性のあるLocal Runtime Componentと、利用者自身のAuthentication / Quotaが必要です。Factoryは存在しないSDK / CLI Capabilityを仮定・捏造してはいけません。
+
+4. **High-impact OperationはHuman Approval対象です。**  
+   Cloud Infrastructure Apply / Destroy、IAM / Credential変更、Public Exposure、Deployment、Release、Git History Rewrite、Mergeには明示的なHuman Approvalを必要とします。
+
+5. **GitHubはDurable Engineering Source of Truthであり、Runtime Scratch Areaではありません。**  
+   Active Database、Process Metadata、Lease、Raw Session Log、CredentialなどはRepository外のRuntime Boundaryへ保存します。
+
+6. **明示的なOpen Source Licenseはまだ選択していません。**  
+   RepositoryはPublicですが、第三者によるReuse / Redistributionを許可する場合は、Open Source Projectとして公開する前にLicenseを明確にする必要があります。
+
+## Documentationの優先順位
+
+Status Document同士で内容が食い違う場合は、次の順序で判断します。
+
+1. 現在の`main` ImplementationとCI Result
+2. この`PROJECT_STATE.md`
+3. 対象Subsystemについて最も新しい日付のHandoff / Review Document
+4. それ以前のPhase / Review RecordはHistorical Evidenceとして扱う
+
+[`POST_PHASE4_REVIEW.md`](docs/operations/POST_PHASE4_REVIEW.md) は、Real Integration前の厳しいCheckpointを意図的に残したHistorical Reviewです。
+
+その後の [`ISOLATION_APPROVAL_INTEGRATION_HANDOFF.md`](docs/operations/ISOLATION_APPROVAL_INTEGRATION_HANDOFF.md) では、Execution Boundary、Approval Integrity、Real Adapterなどの追加Hardeningを記録しており、その実装は後に`main`へMergeされています。
+
+## Public Repositoryとして今後やること
+
+- 第三者によるReuseを想定する場合はSoftware Licenseを選択・追加する
+- Repository Settingsで可能になった段階で`main`のServer-side Protection / Required Checksを有効化する
+- Compatibility Matrixを、実際に検証したVersionと常に対応させる
+- 重要なRepositoryへ適用する前にDisposable RepositoryでReal Agent Runを検証する
+- Multi-Agentによる生産性向上を主張する前に、Wall-clock Time、Retry Rate、CI Failure、Human Review Time、Cost per Merged Taskなどの実測値を蓄積する
