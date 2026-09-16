@@ -45,7 +45,7 @@ jobs:
 
       - name: Static Analysis & Lint (Ruff)
         run: |
-          ruff check orchestrator tests
+          ruff check orchestrator tests scripts
 
       - name: Secret Scan Gate
         run: |
