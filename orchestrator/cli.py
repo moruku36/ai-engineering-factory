@@ -119,27 +119,93 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 
 def cmd_approve(args: argparse.Namespace) -> int:
-    """Do not interpret a caller-supplied name as authenticated Human approval."""
-    print("Approval blocked: an authenticated, worker-inaccessible Human channel is required.")
-    return 2
+    """Issue an authenticated approval token if operator credentials and registry are valid."""
+    from datetime import UTC, datetime, timedelta
+
+    from orchestrator.core.approval import (
+        ApprovalManager,
+        ApprovalVerificationError,
+        compute_argv_digest,
+    )
+    from orchestrator.core.auth import AuthenticationError, AuthorizationError
+
+    operator_key = os.environ.get("AI_FACTORY_OPERATOR_KEY", "").encode("utf-8")
+    if getattr(args, "key_file", None):
+        try:
+            with open(args.key_file, "rb") as f:
+                operator_key = f.read().strip()
+        except OSError as e:
+            print(f"Approval blocked: failed to read operator key file ({e})")
+            return 2
+
+    if not operator_key:
+        print("Approval blocked: an authenticated, worker-inaccessible Human channel is required.")
+        return 2
+
+    try:
+        mgr = ApprovalManager(approvals_dir=args.approvals_dir, enforce_authentication=True)
+        expires_at = (datetime.now(UTC) + timedelta(minutes=args.expires_minutes)).isoformat()
+        argv_digest = compute_argv_digest(args.command.split())
+        token = mgr.issue_authenticated_token(
+            action=args.action,
+            repository=args.repository,
+            task_id=args.task_id,
+            head_sha=args.head_sha,
+            target_ref=args.target_ref,
+            argv_digest=argv_digest,
+            policy_hash=args.policy_hash,
+            plan_hash=args.plan_hash,
+            approved_by=args.approved_by,
+            operator_key=operator_key,
+            expires_at=expires_at,
+        )
+        print(f"Approval token issued: {token['token_id']}")
+        return 0
+    except (AuthenticationError, AuthorizationError, ApprovalVerificationError, OSError, ValueError) as e:
+        print(f"Approval blocked: {e}")
+        return 2
 
 
 def cmd_cancel(args: argparse.Namespace) -> int:
-    """Cancel a task and release its lease."""
+    """Cancel a task and release its lease after strictly verifying worker termination."""
+    from orchestrator.core.lease import LeaseExpiredError, RuntimeLeaseManager, is_process_alive
+    from orchestrator.core.sandbox import ProcessTreeController
+
     ledger = StateLedger(args.state_dir)
     state = ledger.get_state(args.task_id)
     if state["status"] in ("DONE", "CANCELLED"):
         print(f"Task {args.task_id} is already in terminal state: {state['status']}")
         return 0
+
+    lease_manager = RuntimeLeaseManager(db_path=getattr(args, "lease_db", None))
+    active_lease = lease_manager.get_active_lease(args.task_id)
+
     if state["status"] == "RUNNING":
-        print("Cancellation blocked: active worker termination must be confirmed by its controller.")
-        return 2
+        if not active_lease:
+            print("Cancellation blocked: active worker identity and lease not found.")
+            return 2
+        pid = active_lease["pid"]
+        if is_process_alive(pid):
+            controller = ProcessTreeController()
+            terminated = controller.terminate_tree({"pid": pid, "start_time": active_lease.get("heartbeat_ts", 0.0)})
+            if not terminated or is_process_alive(pid):
+                print(f"Cancellation blocked: active worker termination of PID {pid} could not be confirmed.")
+                return 2
+        try:
+            lease_manager.release_lease(args.task_id, active_lease["worker_id"], epoch=active_lease["epoch"])
+        except (OSError, LeaseExpiredError):
+            pass
+    elif active_lease:
+        try:
+            lease_manager.release_lease(args.task_id, active_lease["worker_id"], epoch=active_lease["epoch"])
+        except (OSError, LeaseExpiredError):
+            pass
 
     new_state = ledger.transition(
         task_id=args.task_id,
         expected_revision=state["revision"],
         to_status=TaskStatus.CANCELLED,
-        reason=args.reason or "Cancelled by operator via CLI",
+        reason=args.reason or "Cancelled by operator via CLI with confirmed worker termination",
     )
     print(f"Task {args.task_id} transitioned to CANCELLED (Rev {new_state['revision']}).")
     return 0
@@ -181,6 +247,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_app.add_argument("--approved-by", required=True, help="Human operator username")
     p_app.add_argument("--expires-minutes", type=int, default=15, help="Token validity in minutes")
     p_app.add_argument("--approvals-dir", default=None, help="Path to approvals directory")
+    p_app.add_argument("--key-file", default=None, help="Path to operator secret key file for authentication")
     p_app.set_defaults(func=cmd_approve)
 
     # cancel
@@ -188,6 +255,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_can.add_argument("--task-id", required=True, help="Task ID to cancel")
     p_can.add_argument("--reason", default=None, help="Cancellation reason")
     p_can.add_argument("--state-dir", default=None, help="Path to state/tasks directory")
+    p_can.add_argument("--lease-db", default=None, help="Path to leases.sqlite database")
     p_can.set_defaults(func=cmd_cancel)
 
     return parser

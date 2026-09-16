@@ -2,7 +2,10 @@
 
 import json
 import re
+import sqlite3
 import subprocess
+import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -18,14 +21,94 @@ class GitHubPRError(Exception):
 
 
 class RealGitHubStatePublisher:
-    """Publishes branches to remote and manages PRs with strict idempotency and SHA verification."""
+    """Publishes branches to remote and manages PRs with strict idempotency, durable journaling, and SHA verification."""
 
-    def __init__(self, repo_slug: str = "moruku36/ai-engineering-factory", policy_engine: PolicyEngine | None = None):
+    def __init__(
+        self,
+        repo_slug: str = "moruku36/ai-engineering-factory",
+        policy_engine: PolicyEngine | None = None,
+        state_dir: Path | str | None = None,
+    ):
         if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo_slug):
             raise ValueError("Invalid approved repository slug")
         self.repo_slug = repo_slug
         self.policy_engine = policy_engine or PolicyEngine()
         self.journal: list[dict[str, Any]] = []
+
+        if state_dir:
+            self.state_dir = Path(state_dir)
+        else:
+            self.state_dir = Path(__file__).resolve().parent.parent.parent / "state" / "github"
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        self.db_path = self.state_dir / "github_operations.sqlite"
+        self._init_db()
+
+    def _get_connection(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(str(self.db_path), timeout=30.0, isolation_level=None)
+        conn.execute("PRAGMA journal_mode=WAL;")
+        return conn
+
+    def _init_db(self) -> None:
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS operations (
+                    op_id TEXT PRIMARY KEY,
+                    action TEXT NOT NULL,
+                    repo_slug TEXT NOT NULL,
+                    target_branch TEXT NOT NULL,
+                    head_sha TEXT,
+                    base_branch TEXT,
+                    pr_number INTEGER,
+                    pr_url TEXT,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    confirmed_at TEXT,
+                    details TEXT
+                );
+                """
+            )
+
+    def _record_intent(
+        self,
+        op_id: str,
+        action: str,
+        target_branch: str,
+        head_sha: str | None = None,
+        base_branch: str | None = None,
+        details: str | None = None,
+    ) -> None:
+        now_iso = datetime.now(UTC).isoformat()
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO operations (
+                    op_id, action, repo_slug, target_branch, head_sha,
+                    base_branch, status, created_at, details
+                ) VALUES (?, ?, ?, ?, ?, ?, 'PENDING', ?, ?);
+                """,
+                (op_id, action, self.repo_slug, target_branch, head_sha, base_branch, now_iso, details),
+            )
+
+    def _confirm_operation(
+        self,
+        op_id: str,
+        status: str,
+        pr_number: int | None = None,
+        pr_url: str | None = None,
+        details: str | None = None,
+    ) -> None:
+        now_iso = datetime.now(UTC).isoformat()
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                UPDATE operations
+                SET status = ?, confirmed_at = ?, pr_number = COALESCE(?, pr_number),
+                    pr_url = COALESCE(?, pr_url), details = COALESCE(?, details)
+                WHERE op_id = ?;
+                """,
+                (status, now_iso, pr_number, pr_url, details, op_id),
+            )
 
     @staticmethod
     def _validate_branch(branch: str) -> None:
@@ -80,11 +163,15 @@ class RealGitHubStatePublisher:
         if not re.fullmatch(r"[a-f0-9]{40}", local_sha):
             raise GitHubPublishError("Invalid local commit SHA")
 
+        op_id = f"pub-{uuid.uuid4().hex}"
+        self._record_intent(op_id, "publish_branch", target_branch, head_sha=local_sha)
+
         # 2. Push to remote
         push_cmd = ["git", "push", "origin", f"{local_sha}:refs/heads/{target_branch}"]
 
         push_res = subprocess.run(push_cmd, cwd=str(root), capture_output=True, text=True, check=False)
         if push_res.returncode != 0:
+            self._confirm_operation(op_id, "FAILED", details=push_res.stderr)
             raise GitHubPublishError(f"git push failed: {push_res.stderr}")
 
         # 3. Verify remote ref matches local SHA
@@ -96,19 +183,24 @@ class RealGitHubStatePublisher:
             check=False,
         )
         if ls_res.returncode != 0:
+            self._confirm_operation(op_id, "FAILED", details=ls_res.stderr)
             raise GitHubPublishError(f"git ls-remote failed: {ls_res.stderr}")
 
         lines = ls_res.stdout.strip().splitlines()
         if len(lines) != 1 or lines[0].split()[1:] != [f"refs/heads/{target_branch}"]:
+            self._confirm_operation(op_id, "FAILED", details="Ref not found")
             raise GitHubPublishError(f"Remote ref refs/heads/{target_branch} not found after push")
 
         remote_sha = lines[0].split()[0]
         if remote_sha != local_sha:
+            self._confirm_operation(op_id, "FAILED", details="SHA mismatch")
             raise GitHubPublishError(
                 f"Remote SHA mismatch: local is {local_sha}, but remote is {remote_sha}"
             )
 
+        self._confirm_operation(op_id, "PUBLISHED", details=f"SHA {local_sha}")
         self.journal.append({
+            "op_id": op_id,
             "action": "publish_branch",
             "branch": target_branch,
             "sha": local_sha,
@@ -126,6 +218,10 @@ class RealGitHubStatePublisher:
         """Idempotently create or retrieve PR using gh CLI."""
         self._validate_branch(head_branch)
         self._validate_branch(base_branch)
+
+        op_id = f"pr-{uuid.uuid4().hex}"
+        self._record_intent(op_id, "create_or_update_pr", head_branch, base_branch=base_branch)
+
         # 1. Check if PR already exists for head_branch -> base_branch
         list_cmd = [
             "gh",
@@ -144,11 +240,13 @@ class RealGitHubStatePublisher:
         ]
         list_res = subprocess.run(list_cmd, capture_output=True, text=True, check=False)
         if list_res.returncode != 0:
+            self._confirm_operation(op_id, "FAILED", details="PR lookup failed")
             raise GitHubPRError("PR lookup failed; refusing an uncertain create")
         if list_res.returncode == 0:
             try:
                 prs = json.loads(list_res.stdout)
                 if not isinstance(prs, list):
+                    self._confirm_operation(op_id, "FAILED", details="Malformed response")
                     raise GitHubPRError("PR lookup returned a malformed response")
                 if prs:
                     existing = prs[0]
@@ -156,9 +254,11 @@ class RealGitHubStatePublisher:
                         **self._verified_pr(existing),
                         "reused": True,
                     }
-                    self.journal.append({"action": "pr_reused", **record})
+                    self._confirm_operation(op_id, "REUSED", pr_number=record["number"], pr_url=record["url"])
+                    self.journal.append({"op_id": op_id, "action": "pr_reused", **record})
                     return record
             except (json.JSONDecodeError, KeyError, IndexError, TypeError) as exc:
+                self._confirm_operation(op_id, "FAILED", details="Malformed evidence")
                 raise GitHubPRError("PR lookup returned malformed evidence; refusing create") from exc
 
         # 2. Create new PR
@@ -190,22 +290,115 @@ class RealGitHubStatePublisher:
                             **self._verified_pr(existing),
                             "reused": True,
                         }
-                        self.journal.append({"action": "pr_reused_after_error", **record})
+                        self._confirm_operation(op_id, "REUSED_AFTER_ERROR", pr_number=record["number"], pr_url=record["url"])
+                        self.journal.append({"op_id": op_id, "action": "pr_reused_after_error", **record})
                         return record
                 except (json.JSONDecodeError, KeyError, IndexError):
                     pass
+            self._confirm_operation(op_id, "FAILED", details=create_res.stderr)
             raise GitHubPRError(f"gh pr create failed: {create_res.stderr}")
 
         # Even a zero exit code is insufficient: re-query durable remote evidence.
         verified = subprocess.run(list_cmd, capture_output=True, text=True, check=False)
         if verified.returncode != 0:
+            self._confirm_operation(op_id, "UNCERTAIN", details="Verify query failed")
             raise GitHubPRError("PR creation outcome unknown; reconcile before retry")
         try:
             prs = json.loads(verified.stdout)
             if not isinstance(prs, list) or len(prs) != 1:
+                self._confirm_operation(op_id, "UNCERTAIN", details="Ambiguous evidence")
                 raise GitHubPRError("PR creation outcome ambiguous; reconcile before retry")
             record = {**self._verified_pr(prs[0]), "reused": False}
         except (json.JSONDecodeError, KeyError, IndexError, TypeError) as exc:
+            self._confirm_operation(op_id, "UNCERTAIN", details="Invalid evidence")
             raise GitHubPRError("Invalid PR evidence after creation; reconcile before retry") from exc
-        self.journal.append({"action": "pr_created", **record})
+
+        self._confirm_operation(op_id, "CREATED", pr_number=record["number"], pr_url=record["url"])
+        self.journal.append({"op_id": op_id, "action": "pr_created", **record})
         return record
+
+    def reconcile_pending_operations(self, repo_root: Path | str) -> list[dict[str, Any]]:
+        """Reconcile unconfirmed PENDING operations after crash using durable remote evidence."""
+        reconciled = []
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT op_id, action, target_branch, head_sha, base_branch FROM operations WHERE status = 'PENDING';"
+            )
+            pending = cursor.fetchall()
+            for op_id, action, target_branch, head_sha, base_branch in pending:
+                if action == "publish_branch":
+                    ls_res = subprocess.run(
+                        ["git", "ls-remote", f"https://github.com/{self.repo_slug}.git", f"refs/heads/{target_branch}"],
+                        cwd=str(repo_root), capture_output=True, text=True, check=False,
+                    )
+                    if ls_res.returncode == 0:
+                        lines = ls_res.stdout.strip().splitlines()
+                        if lines and lines[0].split()[0] == head_sha:
+                            conn.execute("UPDATE operations SET status = 'RECONCILED' WHERE op_id = ?;", (op_id,))
+                            reconciled.append({"op_id": op_id, "action": action, "status": "RECONCILED"})
+                elif action == "create_or_update_pr":
+                    list_res = subprocess.run(
+                        [
+                            "gh", "pr", "list", "--repo", self.repo_slug, "--head", target_branch,
+                            "--state", "all", "--json", "number,url,headRefOid,state",
+                        ],
+                        capture_output=True, text=True, check=False,
+                    )
+                    if list_res.returncode == 0:
+                        try:
+                            prs = json.loads(list_res.stdout)
+                            if prs:
+                                pr = prs[0]
+                                conn.execute(
+                                    "UPDATE operations SET status = 'RECONCILED', pr_number = ?, pr_url = ? WHERE op_id = ?;",
+                                    (pr["number"], pr["url"], op_id),
+                                )
+                                reconciled.append({
+                                    "op_id": op_id, "action": action, "status": "RECONCILED", "pr_number": pr["number"],
+                                })
+                        except (json.JSONDecodeError, KeyError, IndexError, sqlite3.Error):
+                            pass
+        return reconciled
+
+    def verify_human_merge(self, pr_number: int, expected_head_sha: str) -> dict[str, Any]:
+        """Verify remote GitHub PR state for verified human merge with matching head SHA."""
+        cmd = [
+            "gh", "pr", "view", str(pr_number),
+            "--repo", self.repo_slug,
+            "--json", "number,state,mergedAt,mergeCommit,headRefOid",
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        if res.returncode != 0:
+            raise GitHubPRError(f"Failed to query PR #{pr_number} status from GitHub: {res.stderr}")
+
+        try:
+            data = json.loads(res.stdout)
+        except json.JSONDecodeError as exc:
+            raise GitHubPRError(f"Invalid JSON response from gh pr view #{pr_number}") from exc
+
+        state = data.get("state")
+        head_oid = data.get("headRefOid")
+
+        if state != "MERGED":
+            return {
+                "merged": False,
+                "state": state,
+                "reason": f"PR #{pr_number} is not merged (current state: {state})",
+            }
+
+        if head_oid != expected_head_sha:
+            raise GitHubPRError(
+                f"Merged PR #{pr_number} head SHA '{head_oid}' differs from expected '{expected_head_sha}'"
+            )
+
+        merge_commit = data.get("mergeCommit", {})
+        oid = merge_commit.get("oid") if isinstance(merge_commit, dict) else merge_commit
+
+        return {
+            "merged": True,
+            "state": "MERGED",
+            "merged_at": data.get("mergedAt"),
+            "merge_commit": oid,
+            "head_sha": head_oid,
+        }
+

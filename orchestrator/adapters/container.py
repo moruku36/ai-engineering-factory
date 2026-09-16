@@ -16,8 +16,10 @@ from pathlib import Path
 
 from orchestrator.adapters.base import ExecutionAdapter
 from orchestrator.core.approval import ApprovalManager
+from orchestrator.core.artifacts import ArtifactCollector, ArtifactExtractionError
 from orchestrator.core.container import OfflineContainerRunner
 from orchestrator.core.sandbox import _get_process_creation_time, _is_process_alive
+from orchestrator.core.verifier import IndependentVerifier, VerificationError
 
 
 class ContainerAdmissionError(RuntimeError):
@@ -151,10 +153,38 @@ class ApprovedContainerAdapter(ExecutionAdapter):
             result = runner.run(plan["command_id"], plan["inputs"], run_id=run_id)
             if result.run_id != run_id:
                 raise ContainerAdmissionError("Container result identity differs from admission")
-            evidence = {"status": "SUCCESS" if result.exit_code == 0 else "FAILED",
-                        "run_id": run_id, "exit_code": result.exit_code,
-                        "output": result.output, "execution_digest": context["argv_digest"],
-                        "candidate_sha": None}
+
+            candidate_sha = None
+            changed_paths = []
+            if result.exit_code == 0 and result.artifacts_dir and result.artifacts_dir.exists():
+                has_files = any(result.artifacts_dir.iterdir())
+                if has_files:
+                    try:
+                        collector = ArtifactCollector(allowed_paths=plan.get("allowed_paths", ["*"]))
+                        collected_dir = self.root / run_id / "collected_artifacts"
+                        collection_res = collector.collect(result.artifacts_dir, collected_dir)
+                        verifier = IndependentVerifier()
+                        measured = verifier.verify_candidate(
+                            task_id=task_id,
+                            base_sha=context["head_sha"],
+                            artifacts=collection_res,
+                            execution_exit_code=result.exit_code,
+                            execution_output=result.output,
+                        )
+                        candidate_sha = measured.candidate_sha
+                        changed_paths = measured.changed_paths
+                    except (ArtifactExtractionError, VerificationError) as exc:
+                        raise ContainerAdmissionError(f"Artifact verification failed: {exc}") from exc
+
+            evidence = {
+                "status": "SUCCESS" if result.exit_code == 0 else "FAILED",
+                "run_id": run_id,
+                "exit_code": result.exit_code,
+                "output": result.output,
+                "execution_digest": context["argv_digest"],
+                "candidate_sha": candidate_sha,
+                "changed_paths": changed_paths,
+            }
             self._status(run_id, evidence["status"], evidence)
             return run_id
         except Exception:

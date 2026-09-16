@@ -5,7 +5,8 @@
 > エンジニアリング計画を、分離されたAIエージェントのタスク、検証済みの変更、レビュー証跡、そして人間が承認するPull Requestへつなげるための、安全性を重視したリポジトリ中心の開発基盤です。
 
 **現在のステータス: Experimental / MANUAL_ONLY**  
-OS隔離、本人認証を伴う承認、Antigravity実接続は未完成です。[最新の完成評価](docs/operations/POST_PR7_REVIEW.md) を参照してください。ただし、現時点では本番利用を前提とした完全自律開発プラットフォームではなく、AIエージェントを使ったソフトウェア開発を安全に工程化するための実験的な基盤です。現在の状態と制約は [PROJECT_STATE.md](PROJECT_STATE.md) を参照してください。
+現時点では本番利用を前提とした完全自律開発プラットフォームではなく、AIエージェントを使ったソフトウェア開発を安全に工程化するための実験的な基盤です。最新の状態と制約は [PROJECT_STATE.md](PROJECT_STATE.md) および [APPROVED_CONTAINER_LOOP.md](docs/operations/APPROVED_CONTAINER_LOOP.md) を参照してください。（※ [`POST_PR7_REVIEW.md`](docs/operations/POST_PR7_REVIEW.md) は PR #7 時点の Historical Review です）
+
 
 ## これは何？
 
@@ -159,7 +160,8 @@ flowchart TD
 | **② 制御プレーン**<br>*(Control Plane)* | • `orchestrator.engine`<br>• `PolicyEngine`<br>• `StateLedger` (SQLite + CAS)<br>• 運用 CLI (`doctor`, `approve`, etc.) | • タスク取込と依存関係スケジューリング<br>• 単一ライターによる状態管理<br>• 承認トークン発行・検証 | • **Single Writer**: 状態更新の直列化<br>• **Fail-Closed Policy**: 不正遷移・不正コマンド拒否<br>• **Human-in-the-Loop**: 重要操作は承認必須 |
 | **③ ワーカーレイヤー**<br>*(Worker Layer)* | • **Builder Agent**<br>• **Tester / Validator Agent**<br>• **Reviewer Agent** | • コード実装・修正<br>• テスト実行・検証・生ログ取得<br>• 独立したコードレビュー・合否判定 | • 役割に応じた最小権限分離<br>• `allowed_paths` による書込スコープ限定<br>• レビュアーの読み取り専用強制 |
 | **④ 実行・隔離境界**<br>*(Execution Boundary)* | • `runtime-root`<br>• Git Worktree 隔離空間<br>• 実行アダプタ (Antigravity / Manual) | • 使い捨て環境でのタスク並行実行<br>• プロセス・一時ポート・PID管理<br>• 外部ランタイムと基盤の通信仲介 | • リポジトリ SoT 外での隔離実行<br>• パス走査（Path Traversal）防止<br>• `shell=True` 排除・コマンドホワイトリスト |
-| **⑤ 品質・セキュリティゲート**<br>*(Quality Gate)* | • `ruff check`<br>• `pytest`<br>• `secret_scan.py`<br>• `audit_dependencies.py`<br>• GitHub Actions (Linux / Win) | • 静的解析・スタイル検証<br>• 単体・結合テスト自動検証<br>• 秘密情報漏洩・依存脆弱性検知<br>• クロスプラットフォーム CI 検査 | • 1 項目でも失敗時は即時ブロック (Fail-Closed)<br>• 真正証跡バンドル (Evidence Bundle) の署名・SHA-256 検証<br>• 監査ログの改ざん防止 |
+| **⑤ 品質・セキュリティゲート**<br>*(Quality Gate)* | • `ruff check`<br>• `pytest`<br>• `secret_scan.py`<br>• `audit_dependencies.py`<br>• GitHub Actions (Linux / Win) | • 静的解析・スタイル検証<br>• 単体・結合テスト自動検証<br>• 秘密情報漏洩・依存関係整合性確認 (`pip check`)<br>• クロスプラットフォーム CI 検査 | • 1 項目でも失敗時は即時ブロック (Fail-Closed)<br>• 真正証跡バンドル (Evidence Bundle) の署名・SHA-256 検証<br>• 監査ログの改ざん防止 |
+
 | **⑥ 出力・人手承認**<br>*(Output & Human Gate)* | • GitHub Pull Request<br>• 人間レビュアー (Human Approver)<br>• `main` ブランチマージ | • 候補変更と証跡の提示<br>• 人間による最終コードレビュー<br>• 検証済み変更の本流統合 | • **自動マージの全面禁止**<br>• **自動本番適用の全面禁止**<br>• 人間の明示的承認による最終ガバナンス |
 
 ### 🤖 ワーカーエージェント権限マトリクス

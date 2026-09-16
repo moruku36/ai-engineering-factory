@@ -39,6 +39,7 @@ class ContainerResult:
     run_id: str
     exit_code: int
     output: str
+    artifacts_dir: Path | None = None
 
 
 class OfflineContainerRunner:
@@ -147,7 +148,7 @@ class OfflineContainerRunner:
             shutil.rmtree(inputs)
 
     def run(self, command_id: str, inputs: dict[str, bytes] | None = None,
-            *, run_id: str | None = None) -> ContainerResult:
+            *, run_id: str | None = None, extract_artifacts: bool = False) -> ContainerResult:
         """Run exact registered argv with an explicit, bounded flat input snapshot."""
         if command_id not in self.commands:
             raise ValueError("Unregistered container command")
@@ -210,8 +211,16 @@ class OfflineContainerRunner:
                 raise ContainerBoundaryError("Invalid container exit evidence")
             output = self._call("logs", "--tail=1000", identity)
             record["exit_code"] = int(exit_text)
+            artifacts_dir = None
+            if extract_artifacts:
+                artifacts_dir = directory / "artifacts"
+                artifacts_dir.mkdir(parents=True, exist_ok=True)
+                try:
+                    self._call("cp", f"{identity}:/workspace/.", str(artifacts_dir))
+                except ContainerBoundaryError:
+                    pass
             self._save(record)
-            return ContainerResult(run_id, int(exit_text), output)
+            return ContainerResult(run_id, int(exit_text), output, artifacts_dir)
         finally:
             # Any uncertain cleanup raises instead of returning success. The journal
             # and snapshot stay available for a trusted operator to reconcile.

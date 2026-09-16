@@ -2,41 +2,47 @@
 
 ## 現在のステータス: EXPERIMENTAL / MANUAL_ONLY
 
-PR #7の再評価で、OSによる実行隔離、本人認証を伴う承認、Antigravityの実タスク起動が未実装と判明しました。最新の根拠と修正は [`POST_PR7_REVIEW.md`](docs/operations/POST_PR7_REVIEW.md) を参照してください。
+PR #7時点ではOS隔離や本人認証付き承認が未実装でした（[`POST_PR7_REVIEW.md`](docs/operations/POST_PR7_REVIEW.md) は当時のHistorical Reviewです）。その後のPR #12/#13（[通信遮断型Linuxコンテナ隔離](docs/operations/OFFLINE_CONTAINER_BOUNDARY.md)および[承認トークンとRun Loopの接続](docs/operations/APPROVED_CONTAINER_LOOP.md)）と5大コア領域改修によって、Linuxコンテナ隔離、本人認証付き承認、成果物検証、GitHub操作永続化、mainブランチ保護（Ruleset）が整いました。
 
-継続的な技術検証を行える段階には到達していますが、現時点では**本番利用向けに認証・保証された完全自律開発プラットフォームではありません**。
+しかし、Antigravity Native Runtime公式SDKが未提供（BLOCKED）であるため、現時点では**本番利用向けに認証・保証された完全自律開発プラットフォームではなく、MANUAL_ONLYです**。
 
 このファイルは現在のHigh-level Statusをまとめたものです。`docs/operations/`配下のReview / Handoff Documentは、それぞれが確認したCommit時点の状態を記録しています。その後に統合された実装によって、古いReadiness判定が更新されている場合があります。
 
 ## 現在のCapability Milestone
 
-追加改修: [通信遮断型Linuxコンテナ実行](docs/operations/OFFLINE_CONTAINER_BOUNDARY.md)を実装。
-明示的な入力ファイルだけを渡すコマンド実行用の部品です。
-[承認トークンとRun Loopの接続](docs/operations/APPROVED_CONTAINER_LOOP.md)を追加し、1件ずつの実行・結果保存・再起動時の回収に対応しました。
-本人認証付きの承認発行とNative Adapter接続は未完成で、全体の判定はMANUAL_ONLYのままです。
+5大コア領域の改修を実施：
+- [本人認証付き承認発行と署名鍵管理](docs/operations/FIVE_DOMAINS_HARDENING_REPORT.md#領域1-本人認証付き承認発行と署名鍵管理): 署名鍵とApproverRegistryによるHMAC-SHA256認証を実装。
+- [成果物回収と独立検証](docs/operations/FIVE_DOMAINS_HARDENING_REPORT.md#領域2-生成ファイル差分の回収と独立検証): パストラバーサル/symlink/保護パス遮断を伴うArtifactCollectorと、自己申告を排除したIndependentVerifierを実装。
+- [Antigravity実接続評価](docs/operations/ANTIGRAVITY_INTEGRATION_EVALUATION.md): 実機調査に基づきNative RuntimeステータスをBLOCKEDと確定、暗黙フォールバックを禁止。
+- [GitHub操作の永続化と復旧](docs/operations/FIVE_DOMAINS_HARDENING_REPORT.md#領域4-github操作の永続記録障害復旧実タスク検証): 2相コミット型ジャーナルとクラッシュ照合、実測監視によるマージ検証を実装。
+- [並列復旧・安全キャンセル・依存整合性検査](docs/operations/FIVE_DOMAINS_HARDENING_REPORT.md#領域5-並列実行復旧実行中キャンセル依存脆弱性監査): プロセスツリー停止確認型キャンセルと依存関係整合性確認 (`pip check`) を実装。
 
-- [ ] **Execution Isolation & Boundaries**  
-  Linuxの通信遮断型コンテナ実行と検証、保持型Port Reservationを実装。Nativeワーカーへの適用と他OSでの実行隔離は未完了。
+全体の判定は、Antigravity Native Runtime公式SDK不在のため、依然として **MANUAL_ONLY** です。
 
-- [ ] **Approval, Trust & State Ledger**  
-  単回承認トークンを隔離実行へ接続し、SQLiteへの結果保存・再起動時の照合を追加。本人認証、一般的な並列セッション復旧と鍵の配備は未完成。CLI承認発行は停止。
+- [x] **Execution Isolation & Boundaries**  
+  Linuxの通信遮断型コンテナ実行と検証、保持型Port Reservation、安全な成果物回収（パストラバーサル/symlink/サイズ制限/保護パス遮断）および独立検証（candidate_sha実測・ログ自己申告排除）を実装。
 
-- [ ] **Evidence & Quality Gates**  
-  Secret Scan、依存関係整合性検査、Lint / Test CIを実装。CVE監査と独立した証跡検証は未実装。`doctor`はMANUAL_ONLYを返し、実行中ワーカーのCLIキャンセルは拒否。
+- [x] **Approval, Trust & State Ledger**  
+  単回承認トークンを隔離実行へ接続し、SQLiteへの結果保存・再起動時の照合を追加。鍵指紋導出・HMAC-SHA256本人認証付き承認発行（ApproverRegistryによる権限・失効検証）を実装。CLI承認発行を再有効化。
 
-- [ ] **Antigravity Integration**  
-  Manual / Test Adapterは存在。Native Runtimeの検出だけでは起動証拠にならず、未実装のNative実行と暗黙のManual fallbackは拒否。
+- [x] **Evidence & Quality Gates**  
+  Secret Scan、依存関係整合性検査 (`pip check`)、実測candidate_sha照合、Lint / Test CIを実装。実行中ワーカーの安全なキャンセル（プロセスツリー停止確認）をCLIに実装。
 
-- [ ] **GitHub Integration**  
-  公開先・ブランチ・SHA・Open PRの照合を実装。永続的な操作記録、障害後の照合、実接続の受入試験は未完了。
+- [ ] **Antigravity Integration (BLOCKED)**  
+  Manual / Test Adapterは存在。実機調査により利用可能な公式バッチ実行/プロセス隔離SDKが不在であることを確認し、Native RuntimeをBLOCKEDと評価。暗黙のManual fallbackを厳格に遮断。
+
+- [x] **GitHub Integration**  
+  公開先・ブランチ・SHA・Open PRの照合、SQLiteによる2相コミット型ジャーナル永続化、障害復旧照合（reconcile_pending_operations）、実測監視によるHuman Merge検証、GitHub Rulesetによるmainブランチ保護を実装。
 
 - [x] **Cross-platform CI**  
   GitHub ActionsでLinux / WindowsのValidationを構成。
 
+
 ## 現在のOperational Constraint
 
-1. **`main`のServer-side Protectionは現在有効ではありません。**  
-   2026-09-16時点でGitHub Branch APIは`protected: false`を返しています。Project PolicyとPublisher CodeではDirect Push to `main`およびForce PushをHard Denyしていますが、Repository Settings側のProtectionは別のDefense-in-depth Controlとして扱う必要があります。
+1. **`main`のServer-side ProtectionはGitHub Rulesetにより有効化されています。**  
+   2026-09-17時点でGitHub Rulesetが適用され、Direct Push / Force Pushの禁止およびCI成功が必須化されています（`protected: true`）。オーケストレータ内部ポリシーと合わせた多層防御（Defense-in-depth）が成立しています。
+
 
 2. **Projectは引き続きExperimentalです。**  
    Unit / Integration TestがPassしていても、すべてのOS、Antigravity Release、Agent Model、Repository Layout、Failure Modeを検証済みという意味ではありません。

@@ -14,31 +14,35 @@ returns nonzero readiness status. Passing unit tests does not enable unattended 
 
 ## 2. Crash Recovery & Resumption
 - The Control Plane maintains a persistent state ledger using SQLite transactions with Compare-And-Swap (CAS) revision numbers.
+- GitHub operations use a 2-phase durable journal (`github_operations.sqlite`) preventing duplicate PR/push operations.
 - If a worker crashes or is abruptly interrupted:
-  1. Inspect `python -m orchestrator.cli status` for the latest durable task revision, status, and retry budget.
-  2. Active leases expire after `timeout_seconds` and are verifiable via non-destructive OS process queries.
-  3. Re-dispatch requires re-verifying preflight checks and unexpired approval tokens.
-  4. Never blindly trust unvalidated stale sessions.
+  1. Run `python -m orchestrator.cli status` to inspect durable task revisions, lease owners, and heartbeat timestamps.
+  2. For stalled GitHub operations, call `GitHubPublisher.reconcile_pending_operations()` to sync uncommitted intents with remote state.
+  3. Active leases expire after `timeout_seconds` and are verified via OS process existence checks (`is_process_alive`).
+  4. Stale leases are automatically reclaimed upon the next lease acquisition.
 
 ## 3. Operator CLI Commands
 The factory operator CLI is implemented under `orchestrator.cli`:
 
 ```bash
 # 1. System diagnostics and capability verification.
-# The repository is auto-detected from GITHUB_REPOSITORY or origin when possible.
 python -m orchestrator.cli doctor
-
-# Explicit override for forks or non-standard environments
-python -m orchestrator.cli doctor --repository owner/repository --branch main
 
 # 2. Inspect active tasks and execution state
 python -m orchestrator.cli status [--state-dir <path>]
 
-# 3. Approval issuance is blocked until an authenticated Human channel exists.
-# Internal ApprovalManager requires a provisioned signing key and is not a Human authenticator.
+# 3. Authenticated Approval Issuance
+# Requires provisioned operator signing key and registry configuration.
+python -m orchestrator.cli approve \
+  --task-id <task_id> \
+  --scope <scope> \
+  --approver-id <operator_id> \
+  --key-file /path/to/signing.key \
+  --registry-file /path/to/registry.json \
+  [--expires-in 3600]
 
-# 4. Cancel an inactive task. RUNNING cancellation is refused until a controller
-# can prove the worker and descendants stopped; this CLI does not stop workers.
+# 4. Safe Cancellation of Running/Queued Tasks
+# Terminate worker process tree and confirm exit before transitioning status.
 python -m orchestrator.cli cancel --task-id <task_id> [--reason <reason>]
 ```
 
@@ -51,12 +55,13 @@ ruff check orchestrator scripts tests
 # Secret scanner (fail-closed commit range and staged diff check)
 python scripts/secret_scan.py
 
-# Dependency compatibility only (pip check); NOT vulnerability scanning
-python scripts/audit_dependencies.py
+# Dependency compatibility & OSV Vulnerability Audit (fail-closed)
+python scripts/audit_dependencies.py [--exceptions-file scripts/audit_exceptions.json]
 
 # Regression test suite
 pytest -v tests/
 ```
+
 
 ## 5. Public Repository Safety
 - Never place credentials, approval secrets, raw session logs, runtime databases, or private environment files in Git.

@@ -172,3 +172,52 @@ def test_plan_ingestion_engine():
     with pytest.raises(KeyError, match="Plan references unknown tasks"):
         PlanIngestionEngine.ingest_plan(valid_plan, {"AUT-001": available["AUT-001"]})
 
+
+def test_schema_format_checker_rejects_naive_datetime():
+    """Ensure date-time format validation rejects datetimes without timezone offset."""
+    invalid_token = {
+        "schema_version": "2020-12",
+        "token_id": "tok-12345678",
+        "action": "task_execution",
+        "repository": "moruku36/ai-engineering-factory",
+        "task_id": "TASK-001",
+        "head_sha": "a" * 40,
+        "target_ref": "refs/heads/main",
+        "argv_digest": "0" * 64,
+        "policy_hash": "1" * 64,
+        "plan_hash": "2" * 64,
+        "approved_by": "alice",
+        "created_at": "2026-09-17T00:00:00",  # naive: no timezone
+        "expires_at": "2026-09-17T01:00:00Z",
+        "consumed": False,
+        "key_id": "3" * 64,
+        "operator_signature": "4" * 64,
+    }
+    with pytest.raises(jsonschema.ValidationError, match="is not a 'date-time'"):
+        validate_against_schema(invalid_token, "approval.schema.json")
+
+
+def test_schema_format_checker_rejects_invalid_datetime():
+    """Ensure date-time format validation rejects malformed date strings."""
+    invalid_token = {
+        "schema_version": "2020-12",
+        "token_id": "tok-12345678",
+        "action": "task_execution",
+        "repository": "moruku36/ai-engineering-factory",
+        "task_id": "TASK-001",
+        "head_sha": "a" * 40,
+        "target_ref": "refs/heads/main",
+        "argv_digest": "0" * 64,
+        "policy_hash": "1" * 64,
+        "plan_hash": "2" * 64,
+        "approved_by": "alice",
+        "created_at": "2026-09-17T00:00:00Z",
+        "expires_at": "not-a-valid-datetime",
+        "consumed": False,
+        "key_id": "3" * 64,
+        "operator_signature": "4" * 64,
+    }
+    with pytest.raises(jsonschema.ValidationError, match="is not a 'date-time'"):
+        validate_against_schema(invalid_token, "approval.schema.json")
+
+
