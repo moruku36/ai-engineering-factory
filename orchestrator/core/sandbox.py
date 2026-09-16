@@ -9,6 +9,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 DANGEROUS_ENV_PREFIXES = (
     "GITHUB_",
@@ -220,8 +221,6 @@ def _get_process_creation_time(pid: int) -> float:
                 ctypes.byref(user_time),
             )
             if success:
-                # Windows FILETIME is 100-nanosecond intervals since Jan 1, 1601
-                # Convert to unix timestamp
                 return (creation_time.value - 116444736000000000) / 10000000.0
             return 0.0
         finally:
@@ -238,8 +237,11 @@ def _get_process_creation_time(pid: int) -> float:
         return float(time.time())
 
 
-def _is_process_alive(pid: int) -> bool:
+def _is_process_alive(pid: int, proc_handle: Any = None) -> bool:
     """Non-destructive process liveness probe."""
+    if proc_handle is not None and hasattr(proc_handle, "poll") and proc_handle.poll() is not None:
+        return False
+
     if sys.platform == "win32":
         kernel32 = ctypes.windll.kernel32
         PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
@@ -258,6 +260,13 @@ def _is_process_alive(pid: int) -> bool:
             kernel32.CloseHandle(handle)
     else:
         try:
+            status_file = Path(f"/proc/{pid}/status")
+            if status_file.exists():
+                for line in status_file.read_text(encoding="utf-8").splitlines():
+                    if line.startswith("State:"):
+                        if "Z" in line:  # Zombie process
+                            return False
+                        break
             os.kill(pid, 0)
             return True
         except OSError:
@@ -270,9 +279,10 @@ class ProcessRecord:
     start_time: float
     run_id: str
     worker_id: str
+    proc: Any = None
 
     def is_alive(self) -> bool:
-        return _is_process_alive(self.pid)
+        return _is_process_alive(self.pid, self.proc)
 
 
 class ProcessTreeController:
@@ -290,14 +300,17 @@ class ProcessTreeController:
         env: dict[str, str] | None = None,
     ) -> ProcessRecord:
         sanitized_env = sanitize_worker_environment(env)
-        proc = subprocess.Popen(
-            argv,
-            cwd=str(cwd),
-            env=sanitized_env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        # Record creation time
+        kwargs: dict[str, Any] = {
+            "cwd": str(cwd),
+            "env": sanitized_env,
+            "stdout": subprocess.DEVNULL,
+            "stderr": subprocess.DEVNULL,
+        }
+        if sys.platform != "win32":
+            kwargs["start_new_session"] = True
+
+        proc = subprocess.Popen(argv, **kwargs)
+
         start_time = _get_process_creation_time(proc.pid)
         if start_time == 0.0:
             start_time = time.time()
@@ -307,13 +320,14 @@ class ProcessTreeController:
             start_time=start_time,
             run_id=run_id,
             worker_id=worker_id,
+            proc=proc,
         )
         self._owned_processes[proc.pid] = record
         return record
 
     def verify_ownership(self, record: ProcessRecord) -> None:
         """Verify process record matches actual process creation time and ownership."""
-        if not _is_process_alive(record.pid):
+        if not _is_process_alive(record.pid, record.proc):
             raise ProcessOwnershipError("Process ownership verification failed: Process is not alive")
 
         current_time = _get_process_creation_time(record.pid)
@@ -331,11 +345,10 @@ class ProcessTreeController:
 
     def terminate_tree(self, record: ProcessRecord) -> None:
         """Forcefully terminate process and all its child/descendant processes."""
-        if not _is_process_alive(record.pid):
+        if not _is_process_alive(record.pid, record.proc):
             return
 
         if sys.platform == "win32":
-            # Use taskkill /F /T /PID to terminate the whole process tree reliably
             subprocess.run(
                 ["taskkill", "/F", "/T", "/PID", str(record.pid)],
                 stdout=subprocess.DEVNULL,
@@ -344,14 +357,18 @@ class ProcessTreeController:
             )
         else:
             try:
-                # Try killing process group
-                pgid = os.getpgid(record.pid)
-                os.killpg(pgid, 9)
+                # Terminate the whole process group
+                os.killpg(record.pid, 9)
             except OSError:
                 try:
                     os.kill(record.pid, 9)
                 except OSError:
                     pass
 
-        # Give a moment to ensure termination
+        if record.proc is not None and hasattr(record.proc, "poll"):
+            try:
+                record.proc.poll()
+            except OSError:
+                pass
+
         time.sleep(0.1)
