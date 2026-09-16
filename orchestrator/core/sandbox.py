@@ -9,7 +9,6 @@ import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 DANGEROUS_ENV_PREFIXES = (
     "GITHUB_",
@@ -231,10 +230,10 @@ def _get_process_creation_time(pid: int) -> float:
         try:
             stat_path = Path(f"/proc/{pid}/stat")
             if stat_path.exists():
-                parts = stat_path.read_text().split()
+                parts = stat_path.read_text(encoding="utf-8").split()
                 if len(parts) > 21:
                     return float(parts[21])
-        except Exception:
+        except (OSError, ValueError, IndexError):
             pass
         return float(time.time())
 
@@ -348,10 +347,10 @@ class ProcessTreeController:
                 # Try killing process group
                 pgid = os.getpgid(record.pid)
                 os.killpg(pgid, 9)
-            except Exception:
+            except OSError:
                 try:
                     os.kill(record.pid, 9)
-                except Exception:
+                except OSError:
                     pass
 
         # Give a moment to ensure termination

@@ -1,15 +1,13 @@
 """Unit and contract tests for real Antigravity and GitHub adapters (AC-H07, AC-H08)."""
 
-import subprocess
-import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from orchestrator.adapters.antigravity import NativeAntigravityAdapter, probe_antigravity_runtime
-from orchestrator.adapters.github import GitHubPRError, GitHubPublishError, RealGitHubStatePublisher
-from orchestrator.core.policy import BranchProtectionError, HardDenyViolationError
+from orchestrator.adapters.github import GitHubPublishError, RealGitHubStatePublisher
+from orchestrator.core.policy import HardDenyViolationError
 
 
 def test_probe_antigravity_detects_installed_runtime():
@@ -71,9 +69,8 @@ def test_real_github_publisher_verifies_remote_sha(tmp_path):
             res.stdout = ("b" * 40) + " refs/heads/task/test\n"  # Mismatch!
         return res
 
-    with patch("subprocess.run", side_effect=mock_subprocess):
-        with pytest.raises(GitHubPublishError, match="Remote SHA mismatch"):
-            publisher.publish_branch(tmp_path, "task/test")
+    with patch("subprocess.run", side_effect=mock_subprocess), pytest.raises(GitHubPublishError, match="Remote SHA mismatch"):
+        publisher.publish_branch(tmp_path, "task/test")
 
 
 def test_real_github_publisher_pr_idempotency():

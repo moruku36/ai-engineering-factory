@@ -1,12 +1,7 @@
 """Unit tests for persistent orchestration RunLoop (AC-H04, AC-H10)."""
 
-import tempfile
-from pathlib import Path
-from unittest.mock import MagicMock
 
-import pytest
 
-from orchestrator.core.approval import ApprovalManager
 from orchestrator.core.lease import RuntimeLeaseManager
 from orchestrator.core.loop import RunLoopController
 from orchestrator.core.state import StateLedger, TaskStatus
@@ -29,7 +24,6 @@ class MockAdapter:
         return {"status": outcome, "exit_code": 0 if outcome == "COMPLETED" else 1}
 
     def collect_evidence(self, session_id):
-        tid = session_id.replace("sess-", "")
         return {
             "candidate_sha": "a" * 40,
             "changed_paths": ["src/app.py"],
@@ -71,7 +65,7 @@ def test_run_loop_completes_single_task(tmp_path):
 
     # Initialize and run
     controller.initialize_tasks()
-    summary = controller.run_until_idle(max_iterations=10)
+    controller.run_until_idle(max_iterations=10)
 
     assert "TASK-001" in adapter.started
     state = ledger.get_state("TASK-001")

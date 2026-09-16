@@ -1,10 +1,7 @@
 """Native Antigravity adapter using installed language server / agentapi runtime."""
 
-import hashlib
-import json
 import os
 import subprocess
-import sys
 import time
 import uuid
 from datetime import UTC, datetime
@@ -14,7 +11,7 @@ from typing import Any
 from orchestrator.adapters.base import ExecutionAdapter
 from orchestrator.adapters.manual import ManualAdapter
 from orchestrator.core.policy import PolicyEngine
-from orchestrator.core.sandbox import ProcessRecord, ProcessTreeController, validate_path_containment
+from orchestrator.core.sandbox import ProcessTreeController
 
 
 def probe_antigravity_runtime() -> dict[str, Any]:
@@ -99,7 +96,7 @@ class NativeAntigravityAdapter(ExecutionAdapter):
             diff_res = subprocess.run(["git", "diff", "--name-only", "HEAD~1...HEAD"], cwd=str(worktree), capture_output=True, text=True, check=False)
             if diff_res.returncode == 0:
                 changed_paths = [p for p in diff_res.stdout.splitlines() if p.strip()]
-        except Exception:
+        except (subprocess.SubprocessError, OSError):
             pass
 
         now = datetime.now(UTC).isoformat()

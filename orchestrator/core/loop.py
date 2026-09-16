@@ -4,7 +4,7 @@ import os
 import time
 from typing import Any
 
-from orchestrator.core.lease import RuntimeLeaseManager
+from orchestrator.core.lease import LeaseAcquisitionError, RuntimeLeaseManager
 from orchestrator.core.scheduler import DAGScheduler
 from orchestrator.core.state import StateLedger, TaskStatus
 
@@ -86,7 +86,7 @@ class RunLoopController:
                     to_status=TaskStatus.REVIEW,
                     reason="Validation passed, awaiting review",
                 )
-                s3 = self.state_ledger.transition(
+                self.state_ledger.transition(
                     task_id=tid,
                     expected_revision=s2["revision"],
                     to_status=TaskStatus.READY_FOR_MERGE,
@@ -117,7 +117,7 @@ class RunLoopController:
                                 to_status=TaskStatus.BLOCKED,
                                 reason=f"Upstream dependency {tid} failed",
                             )
-                    except Exception:
+                    except (KeyError, OSError, ValueError):
                         pass
                 self.lease_manager.release_lease(tid, sess["worker_id"], epoch=sess["epoch"])
                 finished_tasks.append(tid)
@@ -141,7 +141,7 @@ class RunLoopController:
                     pid=pid,
                     timeout_seconds=60.0,
                 )
-            except Exception:
+            except (LeaseAcquisitionError, OSError):
                 continue
 
             # Update scheduler and state ledger
@@ -180,6 +180,6 @@ class RunLoopController:
             try:
                 st = self.state_ledger.get_state(tid)
                 summary[tid] = st["status"]
-            except Exception:
+            except (KeyError, OSError, ValueError):
                 summary[tid] = "UNKNOWN"
         return summary

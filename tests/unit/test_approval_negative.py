@@ -1,12 +1,7 @@
 """Negative, tampering, concurrency, and crash recovery tests for approvals and state (AC-H03, AC-H04)."""
 
 import multiprocessing
-import os
-import secrets
-import sys
-import time
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import pytest
 
@@ -20,7 +15,6 @@ from orchestrator.core.approval import (
 from orchestrator.core.state import (
     CASConflictError,
     StateLedger,
-    StateTransitionError,
     TaskStatus,
 )
 
@@ -33,7 +27,7 @@ def _consume_worker(approvals_dir, token_id, token_kwargs, result_queue):
         result_queue.put("SUCCESS")
     except ApprovalReplayError:
         result_queue.put("REPLAY_ERROR")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         result_queue.put(f"ERROR: {type(e).__name__}")
 
 
@@ -176,7 +170,7 @@ def _cas_transition_worker(state_dir, task_id, from_rev, to_status, result_queue
         result_queue.put("SUCCESS")
     except CASConflictError:
         result_queue.put("CAS_CONFLICT")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         result_queue.put(f"ERROR: {type(e).__name__}")
 
 

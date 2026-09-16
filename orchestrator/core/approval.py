@@ -6,7 +6,6 @@ import json
 import os
 import secrets
 import sqlite3
-import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -278,7 +277,7 @@ class ApprovalManager:
                 with open(temp_path, "w", encoding="utf-8") as f:
                     json.dump(data, f, indent=2)
                 os.replace(temp_path, token_path)
-            except Exception:
+            except OSError:
                 pass
 
 

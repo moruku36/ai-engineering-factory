@@ -1,10 +1,8 @@
 """Negative and boundary tests for worker isolation (AC-H01, AC-H02)."""
 
-import os
 import subprocess
 import sys
 import time
-from pathlib import Path
 
 import pytest
 
@@ -12,7 +10,6 @@ from orchestrator.core.sandbox import (
     CommandRegistry,
     CommandRegistryError,
     PathContainmentError,
-    PortReservationError,
     ProcessOwnershipError,
     ProcessTreeController,
     reserve_ephemeral_port,

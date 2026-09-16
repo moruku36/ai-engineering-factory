@@ -123,7 +123,7 @@ class RealGitHubStatePublisher:
                     }
                     self.journal.append({"action": "pr_reused", **record})
                     return record
-            except Exception:
+            except (json.JSONDecodeError, KeyError, IndexError):
                 pass
 
         # 2. Create new PR
@@ -160,7 +160,7 @@ class RealGitHubStatePublisher:
                         }
                         self.journal.append({"action": "pr_reused_after_error", **record})
                         return record
-                except Exception:
+                except (json.JSONDecodeError, KeyError, IndexError):
                     pass
             raise GitHubPRError(f"gh pr create failed: {create_res.stderr}")
 
@@ -169,7 +169,7 @@ class RealGitHubStatePublisher:
         pr_number = None
         try:
             pr_number = int(pr_url.rstrip("/").split("/")[-1])
-        except Exception:
+        except (ValueError, IndexError):
             pass
 
         record = {

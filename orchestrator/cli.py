@@ -8,10 +8,6 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from orchestrator.core.approval import ApprovalManager, compute_argv_digest
-from orchestrator.core.lease import RuntimeLeaseManager
-from orchestrator.core.loop import RunLoopController
-from orchestrator.core.policy import PolicyEngine
-from orchestrator.core.schema import load_schema, validate_against_schema
 from orchestrator.core.state import StateLedger, TaskStatus
 
 
@@ -28,7 +24,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     try:
         git_ver = subprocess.run(["git", "--version"], capture_output=True, text=True, check=True).stdout.strip()
         print(f"[*] Git: {git_ver} (OK)")
-    except Exception as e:
+    except (subprocess.SubprocessError, OSError) as e:
         print(f"[!] Git check failed: {e}")
         all_ok = False
 
@@ -45,7 +41,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             print(f"[*] GitHub main branch protected: {is_protected} (Operational note: Free/Pro plan constraint)")
         else:
             print("[!] GitHub CLI unreachable or unauthenticated")
-    except Exception:
+    except (subprocess.SubprocessError, OSError):
         print("[!] GitHub CLI not found")
 
     # Antigravity Runtime
@@ -77,7 +73,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         try:
             state = ledger.get_state(tf.stem)
             print(f"Task: {state['task_id']:<10} Status: {state['status']:<15} Rev: {state['revision']:<3} Attempt: {state['attempt']}")
-        except Exception as e:
+        except (KeyError, OSError, ValueError) as e:
             print(f"Task file {tf.name}: Error reading state ({e})")
     return 0
 
@@ -101,7 +97,7 @@ def cmd_approve(args: argparse.Namespace) -> int:
         approved_by=args.approved_by,
         expires_at=exp,
     )
-    print(f"Approval token issued successfully:")
+    print("Approval token issued successfully:")
     print(f"  Token ID: {token['token_id']}")
     print(f"  Task:     {token['task_id']}")
     print(f"  Action:   {token['action']}")

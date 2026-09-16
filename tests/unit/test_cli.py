@@ -1,9 +1,6 @@
 """Unit tests for orchestrator.cli commands (AC-H06)."""
 
-import subprocess
 import sys
-
-import pytest
 
 from orchestrator.cli import main
 from orchestrator.core.state import StateLedger, TaskStatus
