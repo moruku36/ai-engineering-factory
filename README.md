@@ -69,32 +69,148 @@ Task Manifest、Architecture Decision、Rule、Skill、進捗、Handoff、Valida
 
 自動化そのものを目的にせず、安全性と再現性を優先します。
 
-## Architecture Overview
+## 🏛️ System Architecture
+
+![AI Engineering Factory Architecture](docs/assets/architecture.jpg)
+
+AI Engineering Factory は、AI エージェントに自由な直接操作を許さず、**制御プレーン（Control Plane）** が単一の状態台帳（Single Writer + CAS）と厳格なスキーマによって全プロセスを統制します。作業はすべて Git 管理外の使い捨て実行境界（`runtime-root`）で行われ、人手承認（Human-in-the-loop）を経て初めて `main` ブランチへマージされます。
 
 ```mermaid
 flowchart TD
-    H[Human / Architect] --> P[Requirements & Task Plan]
-    P --> G[(GitHub / Source of Truth)]
-    G --> C[Factory Control Plane]
-    C --> S[Policy / Scheduler / State / Approval]
-    S --> B[Builder Worker]
-    S --> T[Tester / Validator Worker]
-    S --> R[Reviewer Worker]
-    B --> W1[Isolated Worktree / Runtime]
-    T --> W2[Isolated Worktree / Runtime]
-    R --> W3[Read-only or Isolated Review]
-    W1 --> Q[Quality & Security Gates]
-    W2 --> Q
-    W3 --> Q
-    Q --> PR[Pull Request + Evidence]
-    PR --> H2[Human Review / Merge]
+    subgraph S1["① 入力・信頼できる情報源 (Source of Truth)"]
+        Human["🧑‍💻 人間 / アーキテクト\n(PO, Engineers)"]
+        Spec["📋 要件・設計・タスク計画\n(JSON Schema / Specs)"]
+        Repo[("📦 GitHub リポジトリ (SoT)\nmain / factory/state")]
+        Human --> Spec --> Repo
+    end
+
+    subgraph S2["② 制御プレーン (Control Plane: orchestrator/)"]
+        direction TB
+        Ingest["タスク取込 / スキーマ検証"]
+        Sched["ポリシーエンジン / 依存関係スケジューラ"]
+        StateLedger[("状態台帳 (SQLite + CAS)\n単一書き込み (Single Writer)")]
+        CLI["運用 CLI\n(doctor / status / approve / cancel)"]
+        Ingest --> Sched <--> StateLedger
+        CLI -.-> Sched
+    end
+
+    subgraph S4["④ 実行・隔離境界 (Execution Boundary: runtime-root)"]
+        direction TB
+        WT["タスク別 Branch / Worktree\n(使い捨て実行環境)"]
+        Adapter["実行アダプタ\n(Antigravity / Manual / Subagent)"]
+        Sandbox["パス逸脱防止 / プロセス・ポート隔離\n生ログ / PID / 一時DB"]
+        Adapter --> WT <--> Sandbox
+    end
+
+    subgraph S3["③ ワーカーレイヤー (Worker Layer: AI Agents)"]
+        direction LR
+        Builder["🔨 Builder\n実装・ビルド (allowed_paths)"]
+        Tester["🧪 Tester / Validator\nテスト・検証・証跡生成"]
+        Reviewer["🔍 Reviewer\nレビュー・品質判定 (ReadOnly)"]
+    end
+
+    subgraph S5["⑤ 品質・セキュリティゲート (Quality & Security Gate)"]
+        direction TB
+        Lint["ruff check (Style / Lint)"]
+        Tests["pytest (Unit & Integration)"]
+        SecScan["secret_scan.py & audit_deps.py"]
+        CI["GitHub Actions (Linux / Windows)"]
+        Evidence["真正証跡集約 (Evidence Bundle)"]
+        Lint & Tests & SecScan & CI --> Evidence
+    end
+
+    subgraph S6["⑥ 出力・人手承認 (Output & Human Gate)"]
+        PR["🚀 GitHub Pull Request\n(候補変更 + 真正証跡)"]
+        HumanApproval{"🛡️ 人間によるレビュー / 承認\n(Human-in-the-Loop)"}
+        MainBranch[("✅ main ブランチ反映\n(自動マージ・自動本番適用なし)")]
+        PR --> HumanApproval
+        HumanApproval -- "Approved" --> MainBranch
+        HumanApproval -- "Rejected" --> Ingest
+    end
+
+    Repo --> Ingest
+    Sched ==> Adapter
+    WT <--> Builder & Tester & Reviewer
+    Builder & Tester & Reviewer ==> S5
+    Evidence ==> PR
+
+    classDef sot fill:#e1f5fe,stroke:#0288d1,stroke-width:2px;
+    classDef cp fill:#fff3e0,stroke:#f57c00,stroke-width:2px;
+    classDef worker fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;
+    classDef boundary fill:#fbe9e7,stroke:#d84315,stroke-width:2px;
+    classDef gate fill:#e8f5e9,stroke:#388e3c,stroke-width:2px;
+    classDef human fill:#fffde7,stroke:#fbc02d,stroke-width:2px;
+
+    class S1 sot;
+    class S2 cp;
+    class S3 worker;
+    class S4 boundary;
+    class S5 gate;
+    class S6 human;
 ```
 
-アーキテクチャは大きく **Control Plane** と **Worker Layer** に分かれます。
+### 📊 アーキテクチャ 6 ステージ対照表
 
-Control PlaneはTask Schema、Policy、State、Scheduling、Approval、Publishingなどを担当し、Workerは割り当てられたTaskの実行だけを担当します。
+| ステージ | 主要コンポーネント | 責務と役割 | セキュリティ & 整合性制御 |
+| :--- | :--- | :--- | :--- |
+| **① 入力・信頼できる情報源**<br>*(Source of Truth)* | • 人間 / アーキテクト<br>• 要件・仕様・タスク定義<br>• GitHub リポジトリ (`main`, `factory/state`) | • 開発要件・受け入れ基準の定義<br>• 長期的な真実の情報源 (SoT)<br>• 監査向け状態の投影 | • `main` ブランチ保護（直接 push 厳禁）<br>• JSON Schema 2020-12 によるスキーマ制約<br>• 監査用ブランチの独立管理 |
+| **② 制御プレーン**<br>*(Control Plane)* | • `orchestrator.engine`<br>• `PolicyEngine`<br>• `StateLedger` (SQLite + CAS)<br>• 運用 CLI (`doctor`, `approve`, etc.) | • タスク取込と依存関係スケジューリング<br>• 単一ライターによる状態管理<br>• 承認トークン発行・検証 | • **Single Writer**: 状態更新の直列化<br>• **Fail-Closed Policy**: 不正遷移・不正コマンド拒否<br>• **Human-in-the-Loop**: 重要操作は承認必須 |
+| **③ ワーカーレイヤー**<br>*(Worker Layer)* | • **Builder Agent**<br>• **Tester / Validator Agent**<br>• **Reviewer Agent** | • コード実装・修正<br>• テスト実行・検証・生ログ取得<br>• 独立したコードレビュー・合否判定 | • 役割に応じた最小権限分離<br>• `allowed_paths` による書込スコープ限定<br>• レビュアーの読み取り専用強制 |
+| **④ 実行・隔離境界**<br>*(Execution Boundary)* | • `runtime-root`<br>• Git Worktree 隔離空間<br>• 実行アダプタ (Antigravity / Manual) | • 使い捨て環境でのタスク並行実行<br>• プロセス・一時ポート・PID管理<br>• 外部ランタイムと基盤の通信仲介 | • リポジトリ SoT 外での隔離実行<br>• パス走査（Path Traversal）防止<br>• `shell=True` 排除・コマンドホワイトリスト |
+| **⑤ 品質・セキュリティゲート**<br>*(Quality Gate)* | • `ruff check`<br>• `pytest`<br>• `secret_scan.py`<br>• `audit_dependencies.py`<br>• GitHub Actions (Linux / Win) | • 静的解析・スタイル検証<br>• 単体・結合テスト自動検証<br>• 秘密情報漏洩・依存脆弱性検知<br>• クロスプラットフォーム CI 検査 | • 1 項目でも失敗時は即時ブロック (Fail-Closed)<br>• 真正証跡バンドル (Evidence Bundle) の署名・SHA-256 検証<br>• 監査ログの改ざん防止 |
+| **⑥ 出力・人手承認**<br>*(Output & Human Gate)* | • GitHub Pull Request<br>• 人間レビュアー (Human Approver)<br>• `main` ブランチマージ | • 候補変更と証跡の提示<br>• 人間による最終コードレビュー<br>• 検証済み変更の本流統合 | • **自動マージの全面禁止**<br>• **自動本番適用の全面禁止**<br>• 人間の明示的承認による最終ガバナンス |
 
-AntigravityはAdapter経由で接続するため、Factory Coreが特定のAgent Runtimeだけに強く依存しない構造を目指しています。
+### 🤖 ワーカーエージェント権限マトリクス
+
+エージェントごとの責務と権限は厳格に分離され、相互検証モデルを形成しています。
+
+| エージェント | 主な責務 | ファイル書込権限 | 許可スコープ (`allowed_paths`) | 実行可能コマンド | 隔離セッション |
+| :--- | :--- | :---: | :--- | :--- | :---: |
+| **Builder** | コード実装、リファクタリング、ビルド | ✅ 許可 | 指定された実装ファイル・テストコードのみ | `git`, ビルドコマンド, フォーマッタ | 独立 Worktree |
+| **Tester / Validator** | テスト実行、エビデンス収集、再現性確認 | ❌ 原則不可<br>*(証跡出力のみ)* | `runtime-root/.../evidence/` 配下のみ | `pytest`, テストランナー, カバレッジツール | 独立セッション |
+| **Reviewer** | 仕様準拠性検査、セキュリティレビュー、承認判定 | ❌ 禁止 (Read-Only) | なし (ファイル変更不可) | 差分検査 (`git diff`), 静的解析ツール | 独立セッション |
+
+### 🔄 状態遷移ライフサイクル (CAS State Progression)
+
+タスクは制御プレーンの CAS (Compare-And-Swap) トランザクションによってのみ状態が進行します。
+
+```mermaid
+stateDiagram-v2
+    [*] --> PROPOSED : タスク登録・スキーマ検証
+    PROPOSED --> READY : 依存関係・リソース解決
+    READY --> RUNNING : リース獲得・Worktree 隔離展開
+    RUNNING --> VALIDATING : Builder 実装完了
+    VALIDATING --> REVIEW : テスト・品質ゲート合格
+    REVIEW --> READY_FOR_MERGE : Reviewer 承認 & 真正証跡生成
+    READY_FOR_MERGE --> DONE : 🛡️ 人間による PR 承認・マージ
+    
+    RUNNING --> BLOCKED : リソース競合・一時障害
+    BLOCKED --> READY : リトライ可能時
+    VALIDATING --> FAILED : テスト失敗 / ゲート違反
+    REVIEW --> FAILED : レビュー不合格
+    FAILED --> CANCELLED : 復元不能 / 中断指示
+    CANCELLED --> [*]
+    DONE --> [*]
+```
+
+### 🔒 ガバナンス 3 本柱
+
+```
+  ┌─────────────────────────────────────────────────────────────┐
+  │                 3つのコア・ガバナンス原則                   │
+  └─────────────────────────────────────────────────────────────┘
+   1. 単一の状態書き込み (Single Writer)
+      - 状態遷移は SQLite + CAS 制御プレーンのみが行う。
+      - 分散 Git ロックを排し、デッドロックや不整合を排除。
+   
+   2. 重要操作は人手承認必須 (Human-in-the-Loop)
+      - 本番反映、外部通信、main マージはすべて人間が判断。
+      - エージェントによる独断マージや本番デプロイは不可。
+
+   3. 永続記憶はリポジトリ中心 (Git-backed SoT)
+      - 仕様・コード・検証結果はすべて Git のコミットと証跡に残る。
+      - ランタイムの一時データ (PID, 生ログ) は Git 外へ隔離。
+```
 
 詳細は [ARCHITECTURE.md](ARCHITECTURE.md)、[AGENTS.md](AGENTS.md)、[docs/architecture/](docs/architecture/) を参照してください。
 
@@ -218,3 +334,4 @@ Automatic MergeやUnattended Production Deploymentは、このFactoryの目標�
 現在、明示的なOpen Source Licenseは選択していません。
 
 Repository自体はPublicですが、第三者による再利用・改変・再配布をOpen Sourceとして許可する場合は、MIT LicenseやApache License 2.0など、利用方針に合ったLicenseを別途選択する必要があります。
+
