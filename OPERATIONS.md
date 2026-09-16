@@ -1,20 +1,57 @@
 # Operations Guide
 
 ## 1. Runtime Isolation
-- All runtime transient state (active SQLite DB, worker PID files, distributed leases, raw execution logs) must be placed in `runtime-root`, completely isolated from the git repository.
+- All runtime transient state (active SQLite DB, worker PID records, distributed leases, raw execution logs) must be placed in `runtime-root`, completely isolated from the git repository.
 - Default runtime root location: `~/.gemini/antigravity/scratch/ai-engineering-factory-runtime/`.
+- Worker execution is strictly confined using `ProcessTreeController` and `validate_path_containment`. Any escape via `..` or symlinks is blocked.
 
 ## 2. Crash Recovery & Resumption
-- The Control Plane maintains a persistent state ledger using Compare-And-Swap (CAS) revision numbers.
+- The Control Plane maintains a persistent state ledger using SQLite transactions with Compare-And-Swap (CAS) revision numbers.
 - If a worker crashes or is abruptly interrupted:
-  1. Inspect `state/handoffs/<task-id>.json` for the last committed state, spec hash, candidate SHA, and dirty working tree status.
-  2. The scheduler validates lease expiration against active process verification.
+  1. Inspect `python -m orchestrator.cli status` for the latest durable task revision, status, and retry budget.
+  2. Active leases expire after `timeout_seconds` and are verifiable via non-destructive OS process queries.
   3. Re-dispatch requires re-verifying preflight checks and unexpired approval tokens.
   4. Never blindly trust unvalidated stale sessions.
 
-## 3. Inspection Commands
-The proposed `orchestrator.cli` entrypoint is not implemented. Do not use the
-previously advertised state/validate/lease commands as operational instructions.
-Current functionality is exercised through Python modules and fixture tests only.
-See [the readiness review](docs/operations/POST_PHASE4_REVIEW.md) for the remaining
-entrypoint, isolation and integration gates.
+## 3. Operator CLI Commands
+The factory operator CLI is implemented under `orchestrator.cli`:
+
+```bash
+# 1. System diagnostics and capability verification
+python -m orchestrator.cli doctor
+
+# 2. Inspect active tasks and execution state
+python -m orchestrator.cli status [--state-dir <path>]
+
+# 3. Issue a cryptographically signed human approval token
+python -m orchestrator.cli approve \
+  --action task_execution \
+  --repository moruku36/ai-engineering-factory \
+  --task-id FND-001 \
+  --head-sha <commit_sha> \
+  --target-ref refs/heads/main \
+  --command "pytest -v tests/" \
+  --policy-hash <sha256> \
+  --plan-hash <sha256> \
+  --approved-by operator \
+  --expires-minutes 15
+
+# 4. Cancel a running task and release resources
+python -m orchestrator.cli cancel --task-id <task_id> [--reason <reason>]
+```
+
+## 4. Operational Gates & Secret Verification
+Before opening pull requests or deploying changes, run all mandatory quality gates:
+```bash
+# Linter
+ruff check orchestrator scripts tests
+
+# Secret scanner (fail-closed commit range and staged diff check)
+python scripts/secret_scan.py
+
+# Dependency audit
+python scripts/audit_dependencies.py
+
+# Regression test suite
+pytest -v tests/
+```
