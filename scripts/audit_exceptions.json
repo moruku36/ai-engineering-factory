@@ -1,0 +1,9 @@
+[
+  {
+    "cve_id": "CVE-EXAMPLE-DUMMY",
+    "package": "dummy-pkg",
+    "reason": "Demonstration exception with mandatory fields for test verification",
+    "owner": "security-architect@example.com",
+    "expires_at": "2029-12-31T23:59:59Z"
+  }
+]
