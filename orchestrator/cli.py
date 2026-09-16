@@ -1,6 +1,7 @@
 """Unified Operator CLI for AI Engineering Factory."""
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
