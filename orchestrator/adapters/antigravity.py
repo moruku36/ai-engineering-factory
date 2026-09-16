@@ -11,22 +11,37 @@ from orchestrator.core.policy import PolicyEngine
 from orchestrator.core.sandbox import ProcessTreeController
 
 
+class AntigravityTransportError(NotImplementedError):
+    """Raised when Antigravity runtime transport cannot establish an isolated, authenticated session."""
+
+
 def probe_antigravity_runtime() -> dict[str, Any]:
-    """Probe for installed Antigravity language_server / agentapi binaries and version."""
+    """Probe for installed Antigravity language_server / agentapi binaries and evaluate capability."""
     candidates = [
         Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "antigravity" / "resources" / "bin" / "language_server.exe",
         Path.home() / ".gemini" / "antigravity" / "bin" / "agentapi.bat",
     ]
+    detected_path = None
     for c in candidates:
         if c.is_file():
-            return {
-                "available": False,
-                "detected": True,
-                "status": "UNVERIFIED",
-                "binary_path": str(c),
-                "version": None,
-                "probe_timestamp": datetime.now(UTC).isoformat(),
-            }
+            detected_path = str(c)
+            break
+
+    if detected_path:
+        return {
+            "available": False,
+            "detected": True,
+            "status": "BLOCKED",
+            "binary_path": detected_path,
+            "version": None,
+            "probe_timestamp": datetime.now(UTC).isoformat(),
+            "reason": (
+                "Binary presence does not establish official headless batch execution. "
+                "The agentapi CLI only supports interactive new-conversation/send-message, "
+                "and lacks verified process/network boundary isolation and automated token auth."
+            ),
+        }
+
     return {
         "available": False,
         "detected": False,
@@ -34,6 +49,7 @@ def probe_antigravity_runtime() -> dict[str, Any]:
         "binary_path": None,
         "version": None,
         "probe_timestamp": datetime.now(UTC).isoformat(),
+        "reason": "No installed Antigravity language_server or agentapi binary detected.",
     }
 
 
@@ -47,7 +63,10 @@ class NativeAntigravityAdapter(ExecutionAdapter):
         self.controller = ProcessTreeController()
 
     def start_task(self, task_manifest: dict[str, Any], worktree_path: str) -> str:
-        raise NotImplementedError("Native task transport and OS isolation have not been implemented")
+        raise AntigravityTransportError(
+            "Native Antigravity execution is BLOCKED: Official headless transport with "
+            "enforced OS boundary isolation is unverified. Silent fallback to manual is forbidden."
+        )
 
     def poll_task(self, run_id: str) -> dict[str, Any]:
         if run_id not in self.runs:
