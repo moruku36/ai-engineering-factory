@@ -25,27 +25,25 @@ class ApprovalExpiredError(ApprovalVerificationError):
     """Raised when an approval token has expired."""
 
 
-_APPROVAL_SECRET_KEY = os.environ.get(
-    "AI_FACTORY_APPROVAL_SECRET",
-    "control-plane-hardened-approval-secret-key-default-2026",
-).encode("utf-8")
-
-
-def _compute_token_signature(token_data: dict[str, Any]) -> str:
+def _compute_token_signature(token_data: dict[str, Any], secret_key: bytes) -> str:
     """Compute HMAC-SHA256 signature across all critical token fields."""
-    canonical = (
-        f"{token_data['token_id']}|{token_data['action']}|{token_data['repository']}|"
-        f"{token_data['task_id']}|{token_data['head_sha']}|{token_data['target_ref']}|"
-        f"{token_data['argv_digest']}|{token_data['policy_hash']}|{token_data['plan_hash']}|"
-        f"{token_data['approved_by']}|{token_data['created_at']}|{token_data['expires_at']}"
+    signed_fields = (
+        "token_id", "action", "repository", "task_id", "head_sha", "target_ref",
+        "argv_digest", "policy_hash", "plan_hash", "approved_by", "created_at", "expires_at",
     )
-    return hmac.new(_APPROVAL_SECRET_KEY, canonical.encode("utf-8"), hashlib.sha256).hexdigest()
+    canonical = json.dumps(
+        {name: token_data[name] for name in signed_fields}, sort_keys=True, separators=(",", ":")
+    )
+    return hmac.new(secret_key, canonical.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
 class ApprovalManager:
     """Issues and atomically verifies/consumes approval tokens bound to execution context."""
 
     def __init__(self, approvals_dir: Path | str | None = None):
+        self._secret_key = os.environ.get("AI_FACTORY_APPROVAL_SECRET", "").encode("utf-8")
+        if len(self._secret_key) < 32:
+            raise ApprovalVerificationError("A provisioned control-plane signing key is required (minimum 32 bytes)")
         if approvals_dir is None:
             self.approvals_dir = Path(__file__).resolve().parent.parent.parent / "state" / "approvals"
         else:
@@ -121,7 +119,7 @@ class ApprovalManager:
         }
 
         validate_against_schema(token_data, "approval.schema.json")
-        signature = _compute_token_signature(token_data)
+        signature = _compute_token_signature(token_data, self._secret_key)
 
         # Store in SQLite transactional ledger
         with self._get_connection() as conn:
@@ -230,7 +228,7 @@ class ApprovalManager:
                 "created_at": t_created,
                 "expires_at": t_expires,
             }
-            expected_sig = _compute_token_signature(token_dict)
+            expected_sig = _compute_token_signature(token_dict, self._secret_key)
             if not hmac.compare_digest(t_sig, expected_sig):
                 conn.execute("ROLLBACK;")
                 raise ApprovalVerificationError(f"Cryptographic signature mismatch on token '{token_id}'")

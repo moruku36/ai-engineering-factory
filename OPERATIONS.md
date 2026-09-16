@@ -1,9 +1,16 @@
 # Operations Guide
 
+**MANUAL_ONLY:** See [the latest acceptance review](docs/operations/POST_PR7_REVIEW.md).
+Native execution and authenticated Human approval are not implemented. `doctor`
+returns nonzero readiness status. Passing unit tests does not enable unattended use.
+
 ## 1. Runtime Isolation
 - All runtime transient state (active SQLite DB, worker PID records, distributed leases, raw execution logs) must be placed in `runtime-root`, completely isolated from the git repository.
 - Default runtime root location: `~/.gemini/antigravity/scratch/ai-engineering-factory-runtime/`.
-- Worker execution is strictly confined using `ProcessTreeController` and `validate_path_containment`. Any escape via `..` or symlinks is blocked.
+- `ProcessTreeController` runs under the host user. Path validation only checks API
+  arguments; it does not restrict code executed by the worker or its network access.
+- `reserve_ephemeral_port()` now returns a context-managed `PortReservation` with
+  a live `.socket` and `.port`; closing and rebinding is not an atomic handoff.
 
 ## 2. Crash Recovery & Resumption
 - The Control Plane maintains a persistent state ledger using SQLite transactions with Compare-And-Swap (CAS) revision numbers.
@@ -27,20 +34,11 @@ python -m orchestrator.cli doctor --repository owner/repository --branch main
 # 2. Inspect active tasks and execution state
 python -m orchestrator.cli status [--state-dir <path>]
 
-# 3. Issue a cryptographically signed human approval token
-python -m orchestrator.cli approve \
-  --action task_execution \
-  --repository owner/repository \
-  --task-id FND-001 \
-  --head-sha <commit_sha> \
-  --target-ref refs/heads/main \
-  --command "pytest -v tests/" \
-  --policy-hash <sha256> \
-  --plan-hash <sha256> \
-  --approved-by operator \
-  --expires-minutes 15
+# 3. Approval issuance is blocked until an authenticated Human channel exists.
+# Internal ApprovalManager requires a provisioned signing key and is not a Human authenticator.
 
-# 4. Cancel a running task and release resources
+# 4. Cancel an inactive task. RUNNING cancellation is refused until a controller
+# can prove the worker and descendants stopped; this CLI does not stop workers.
 python -m orchestrator.cli cancel --task-id <task_id> [--reason <reason>]
 ```
 
@@ -53,7 +51,7 @@ ruff check orchestrator scripts tests
 # Secret scanner (fail-closed commit range and staged diff check)
 python scripts/secret_scan.py
 
-# Dependency audit
+# Dependency compatibility only (pip check); NOT vulnerability scanning
 python scripts/audit_dependencies.py
 
 # Regression test suite

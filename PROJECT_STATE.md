@@ -1,8 +1,8 @@
 # Project State
 
-## 現在のステータス: EXPERIMENTAL / INTEGRATION_VERIFIED
+## 現在のステータス: EXPERIMENTAL / MANUAL_ONLY
 
-主要なExecution Isolation、Approval Integrity、Validation、Antigravity Adapter、GitHub Publisherの実装はPR #7までに`main`へ統合されています。
+PR #7の再評価で、OSによる実行隔離、本人認証を伴う承認、Antigravityの実タスク起動が未実装と判明しました。最新の根拠と修正は [`POST_PR7_REVIEW.md`](docs/operations/POST_PR7_REVIEW.md) を参照してください。
 
 継続的な技術検証を行える段階には到達していますが、現時点では**本番利用向けに認証・保証された完全自律開発プラットフォームではありません**。
 
@@ -10,20 +10,20 @@
 
 ## 現在のCapability Milestone
 
-- [x] **Execution Isolation & Boundaries**  
-  Registered Command Execution、Path Containment、Process Tree Control、PID Reuse Protection、Task-scoped Runtime Resource、Ephemeral Port Allocationを実装。
+- [ ] **Execution Isolation & Boundaries**  
+  Registered Command Execution、Path Containment、Process Tree Control、PID Reuse Protection、Task-scoped Runtime Resource、保持型Port Reservationは実装。OSによるファイル・ネットワーク隔離と実ワーカー検証は未完了。
 
-- [x] **Approval, Trust & State Ledger**  
-  Cryptographically bound Approval Token、AtomicなSingle-use Consumption、Persistent SQLite State、CAS形式のState Transition、Retry Budget、Persistent Run Loop Controllerを実装。
+- [ ] **Approval, Trust & State Ledger**  
+  Cryptographically bound Approval Token、AtomicなSingle-use Consumption、Persistent SQLite State、CAS形式のState Transition、Retry Budget、Run Loopの一部を実装。セッション復旧、本人認証、ワーカーからの鍵・ストレージ隔離は未実装。CLI承認発行は停止。
 
-- [x] **Evidence & Quality Gates**  
-  Fail-closed Secret Scan、Dependency Audit、Lint / Test CI、実Git / Diff Evidence、Operator CLIの`doctor` / `status` / `approve` / `cancel`を実装。
+- [ ] **Evidence & Quality Gates**  
+  Secret Scan、依存関係整合性検査、Lint / Test CIを実装。CVE監査と独立した証跡検証は未実装。`doctor`はMANUAL_ONLYを返し、実行中ワーカーのCLIキャンセルは拒否。
 
-- [x] **Antigravity Integration**  
-  Native Runtime Probe / Adapterと、Manual / Test AdapterをExecution Abstractionの背後に実装。
+- [ ] **Antigravity Integration**  
+  Manual / Test Adapterは存在。Native Runtimeの検出だけでは起動証拠にならず、未実装のNative実行と暗黙のManual fallbackは拒否。
 
-- [x] **GitHub Integration**  
-  Remote SHA VerificationとIdempotentなPR Query / Creationを含むPublisher Pathを実装。
+- [ ] **GitHub Integration**  
+  公開先・ブランチ・SHA・Open PRの照合を実装。永続的な操作記録、障害後の照合、実接続の受入試験は未完了。
 
 - [x] **Cross-platform CI**  
   GitHub ActionsでLinux / WindowsのValidationを構成。
@@ -59,7 +59,7 @@ Status Document同士で内容が食い違う場合は、次の順序で判断�
 
 [`POST_PHASE4_REVIEW.md`](docs/operations/POST_PHASE4_REVIEW.md) は、Real Integration前の厳しいCheckpointを意図的に残したHistorical Reviewです。
 
-その後の [`ISOLATION_APPROVAL_INTEGRATION_HANDOFF.md`](docs/operations/ISOLATION_APPROVAL_INTEGRATION_HANDOFF.md) では、Execution Boundary、Approval Integrity、Real Adapterなどの追加Hardeningを記録しており、その実装は後に`main`へMergeされています。
+[`ISOLATION_APPROVAL_INTEGRATION_HANDOFF.md`](docs/operations/ISOLATION_APPROVAL_INTEGRATION_HANDOFF.md) の完了表記は最新レビューで撤回しています。モックによるテスト成功は実接続や隔離の証明ではありません。
 
 ## Public Repositoryとして今後やること
 

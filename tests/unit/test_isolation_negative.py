@@ -80,10 +80,14 @@ def test_command_registry_rejects_unregistered_and_invalid_args():
 
 
 def test_port_reservation_provides_distinct_bound_ports():
-    ports = [reserve_ephemeral_port() for _ in range(5)]
-    assert len(ports) == len(set(ports))
-    for p in ports:
-        assert 1024 <= p <= 65535
+    from contextlib import ExitStack
+
+    with ExitStack() as stack:
+        reservations = [stack.enter_context(reserve_ephemeral_port()) for _ in range(5)]
+        ports = [reservation.port for reservation in reservations]
+        assert len(ports) == len(set(ports))
+        for p in ports:
+            assert 1024 <= p <= 65535
 
 
 def test_process_tree_termination_kills_descendants(tmp_path):

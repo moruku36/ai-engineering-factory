@@ -13,14 +13,6 @@ SECRET_PATTERNS = [
     (re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"), "Private Key Block"),
 ]
 
-# Narrowly allowlisted harmless test fixture lines
-ALLOWED_TEST_FIXTURE_SNIPPETS = {
-    "ghp_secret12345",
-    "gho_secret67890",
-    "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-}
-
-
 def run_git_command(args: list[str]) -> str:
     res = subprocess.run(
         args,
@@ -40,9 +32,6 @@ def scan_text(text: str, source_name: str) -> list[str]:
         return []
     found = []
     for line in text.splitlines():
-        # Check if line contains known test fixture string
-        if any(fixture in line for fixture in ALLOWED_TEST_FIXTURE_SNIPPETS):
-            continue
         for pattern, name in SECRET_PATTERNS:
             matches = pattern.findall(line)
             if matches:
@@ -69,6 +58,17 @@ def scan_all() -> int:
 
         diff_output = run_git_command(["git", "diff", diff_range])
         staged_output = run_git_command(["git", "diff", "--cached"])
+        # Include every intermediate commit: add-then-remove leaks are still leaks.
+        commit_range = diff_range.replace("...", "..")
+        history_output = run_git_command(["git", "log", "--format=", "-p", commit_range])
+        # Examine candidate lines in the entire tracked HEAD tree, even when main
+        # equals HEAD. Never skip the test directory or an entire fixture line.
+        tree = subprocess.run(
+            ["git", "grep", "-I", "-n", "-E", "ghp_|gho_|github_pat_|AKIA|BEGIN .*PRIVATE KEY", "HEAD"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
+        )
+        if tree.returncode not in (0, 1):
+            raise RuntimeError("Failed to inspect the tracked HEAD tree")
     except (RuntimeError, subprocess.SubprocessError, OSError) as e:
         print(f"SECRET SCAN ERROR: Failed to run git diff checks: {e}", file=sys.stderr)
         return 2  # Fail closed
@@ -76,6 +76,8 @@ def scan_all() -> int:
     found_secrets = []
     found_secrets.extend(scan_text(diff_output, f"commit range {diff_range}"))
     found_secrets.extend(scan_text(staged_output, "staged changes"))
+    found_secrets.extend(scan_text(history_output, "commit history"))
+    found_secrets.extend(scan_text(tree.stdout, "HEAD tree"))
 
     if found_secrets:
         print("SECRET SCAN FAILED: Potential credentials detected:", file=sys.stderr)

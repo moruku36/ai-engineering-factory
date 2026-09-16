@@ -4,10 +4,9 @@ import argparse
 import os
 import subprocess
 import sys
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from orchestrator.core.approval import ApprovalManager, compute_argv_digest
+from orchestrator.adapters.antigravity import probe_antigravity_runtime
 from orchestrator.core.state import StateLedger, TaskStatus
 
 
@@ -93,26 +92,11 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         print("[!] GitHub repository not detected; pass --repository owner/repo to inspect it")
 
     # Antigravity Runtime
-    agy_found = False
-    possible_paths = [
-        Path(os.environ.get("LOCALAPPDATA", ""))
-        / "Programs"
-        / "antigravity"
-        / "resources"
-        / "bin"
-        / "language_server.exe",
-        Path.home() / ".gemini" / "antigravity" / "bin" / "agentapi.bat",
-    ]
-    for p in possible_paths:
-        if p.exists():
-            print(f"[*] Antigravity component: {p} (Found)")
-            agy_found = True
-
-    if not agy_found:
-        print("[!] Antigravity binaries not found in standard paths")
-
-    print(f"[*] Execution Mode: {'VERIFIED_READY' if (all_ok and agy_found) else 'MANUAL_ONLY'}")
-    return 0 if all_ok else 1
+    probe = probe_antigravity_runtime()
+    print(f"[*] Antigravity transport: {probe['status']}")
+    print("[!] OS isolation and authenticated Human approval are not implemented")
+    print("[*] Execution Mode: MANUAL_ONLY")
+    return 2 if all_ok else 1
 
 
 def cmd_status(args: argparse.Namespace) -> int:
@@ -135,30 +119,9 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 
 def cmd_approve(args: argparse.Namespace) -> int:
-    """Issue a cryptographically signed approval token."""
-    manager = ApprovalManager(args.approvals_dir)
-    argv_list = args.command.split()
-    argv_digest = compute_argv_digest(argv_list)
-
-    exp = (datetime.now(UTC) + timedelta(minutes=args.expires_minutes)).isoformat()
-    token = manager.issue_token(
-        action=args.action,
-        repository=args.repository,
-        task_id=args.task_id,
-        head_sha=args.head_sha,
-        target_ref=args.target_ref,
-        argv_digest=argv_digest,
-        policy_hash=args.policy_hash,
-        plan_hash=args.plan_hash,
-        approved_by=args.approved_by,
-        expires_at=exp,
-    )
-    print("Approval token issued successfully:")
-    print(f"  Token ID: {token['token_id']}")
-    print(f"  Task:     {token['task_id']}")
-    print(f"  Action:   {token['action']}")
-    print(f"  Expires:  {token['expires_at']}")
-    return 0
+    """Do not interpret a caller-supplied name as authenticated Human approval."""
+    print("Approval blocked: an authenticated, worker-inaccessible Human channel is required.")
+    return 2
 
 
 def cmd_cancel(args: argparse.Namespace) -> int:
@@ -168,6 +131,9 @@ def cmd_cancel(args: argparse.Namespace) -> int:
     if state["status"] in ("DONE", "CANCELLED"):
         print(f"Task {args.task_id} is already in terminal state: {state['status']}")
         return 0
+    if state["status"] == "RUNNING":
+        print("Cancellation blocked: active worker termination must be confirmed by its controller.")
+        return 2
 
     new_state = ledger.transition(
         task_id=args.task_id,

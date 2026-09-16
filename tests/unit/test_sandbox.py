@@ -39,7 +39,7 @@ def test_sanitize_worker_environment_strips_secrets():
     # Safe vars preserved
     assert cleaned["PATH"] == "/usr/bin"
     assert cleaned["PYTHONPATH"] == "src/"
-    assert cleaned["FACTORY_WORKER_ISOLATED"] == "true"
+    assert cleaned["FACTORY_WORKER_ISOLATED"] == "false"
 
 
 def test_validate_command_argv_detects_shell_injections():

@@ -4,8 +4,8 @@
 
 > エンジニアリング計画を、分離されたAIエージェントのタスク、検証済みの変更、レビュー証跡、そして人間が承認するPull Requestへつなげるための、安全性を重視したリポジトリ中心の開発基盤です。
 
-**現在のステータス: Experimental / Integration Verified**  
-Control Plane、実行分離、Human Approval、検証、Antigravity Adapter、GitHub連携まで実装・テストしています。ただし、現時点では本番利用を前提とした完全自律開発プラットフォームではなく、AIエージェントを使ったソフトウェア開発を安全に工程化するための実験的な基盤です。現在の状態と制約は [PROJECT_STATE.md](PROJECT_STATE.md) を参照してください。
+**現在のステータス: Experimental / MANUAL_ONLY**  
+OS隔離、本人認証を伴う承認、Antigravity実接続は未完成です。[最新の完成評価](docs/operations/POST_PR7_REVIEW.md) を参照してください。ただし、現時点では本番利用を前提とした完全自律開発プラットフォームではなく、AIエージェントを使ったソフトウェア開発を安全に工程化するための実験的な基盤です。現在の状態と制約は [PROJECT_STATE.md](PROJECT_STATE.md) を参照してください。
 
 ## これは何？
 
@@ -72,6 +72,8 @@ Task Manifest、Architecture Decision、Rule、Skill、進捗、Handoff、Valida
 ## 🏛️ System Architecture
 
 ![AI Engineering Factory Architecture](docs/assets/architecture.jpg)
+
+以下の図・役割・遷移は目標設計です。現在のコードが全境界を強制することを示すものではありません。
 
 AI Engineering Factory は、AI エージェントに自由な直接操作を許さず、**制御プレーン（Control Plane）** が単一の状態台帳（Single Writer + CAS）と厳格なスキーマによって全プロセスを統制します。作業はすべて Git 管理外の使い捨て実行境界（`runtime-root`）で行われ、人手承認（Human-in-the-loop）を経て初めて `main` ブランチへマージされます。
 
@@ -220,14 +222,14 @@ stateDiagram-v2
 
 - SchemaベースのTask / State管理
 - Dependency-aware SchedulerとTask Lifecycle管理
-- Worktree、Path、Process、Runtime Resourceの分離
+- Worktree、Path、Process、Runtime Resource管理（OS隔離は未実装）
 - 永続StateとRetry管理
-- Cryptographically bound / Single-useなHuman Approval Token
+- 署名・単回消費の承認Token部品（Human本人認証は未実装）
 - Registered Commandによる実行境界
-- Native Antigravity AdapterとManual / Test Adapter
+- Manual / Test Adapter（Native実行は未実装として拒否）
 - Remote SHA確認と重複PR防止を含むGitHub Publisher
-- Secret Scan、Dependency Audit、Lint、Linux / Windows CI
-- `doctor` / `status` / `approve` / `cancel` を備えたOperator CLI
+- Secret Scan、依存関係整合性検査、Lint、Linux / Windows CI（CVE監査は未実装）
+- Operator CLI（`approve`と実行中の`cancel`は安全条件未達のため拒否）
 
 ただし、すべてのOS、Agent Runtime、Cloud Provider、Infrastructure Workflowの組み合わせを検証済みという意味ではありません。
 

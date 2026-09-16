@@ -13,24 +13,25 @@ class MockAdapter:
         self.started = []
         self.released = []
 
-    def start_execution(self, task_manifest, worktree_path=None):
+    def start_task(self, task_manifest, worktree_path):
         tid = task_manifest["id"]
         self.started.append(tid)
-        return {"session_id": f"sess-{tid}", "status": "RUNNING"}
+        return f"sess-{tid}"
 
-    def poll_execution(self, session_id):
+    def poll_task(self, session_id):
         tid = session_id.replace("sess-", "")
         outcome = self.outcomes.get(tid, "COMPLETED")
         return {"status": outcome, "exit_code": 0 if outcome == "COMPLETED" else 1}
 
-    def collect_evidence(self, session_id):
+    def collect_results(self, session_id):
         return {
+            "status": "SUCCESS",
             "candidate_sha": "a" * 40,
             "changed_paths": ["src/app.py"],
             "test_summary": {"passed": 5, "failed": 0},
         }
 
-    def cancel_execution(self, session_id):
+    def cancel_task(self, session_id):
         self.released.append(session_id)
 
 
@@ -65,11 +66,16 @@ def test_run_loop_completes_single_task(tmp_path):
 
     # Initialize and run
     controller.initialize_tasks()
+    for task in tasks:
+        task["worktree"] = str(tmp_path)
+        ledger.transition(task["id"], 0, TaskStatus.READY, "Trusted test fixture preflight")
+    controller.initialize_tasks()
     controller.run_until_idle(max_iterations=10)
 
     assert "TASK-001" in adapter.started
     state = ledger.get_state("TASK-001")
-    assert state["status"] == TaskStatus.READY_FOR_MERGE.value
+    assert state["status"] == TaskStatus.VALIDATING.value
+    assert controller.scheduler.task_statuses["TASK-001"] == TaskStatus.VALIDATING
     assert state["candidate_sha"] == "a" * 40
 
 
@@ -110,6 +116,10 @@ def test_run_loop_blocks_downstream_on_failure(tmp_path):
         base_sha="c" * 40,
     )
 
+    controller.initialize_tasks()
+    for task in tasks:
+        task["worktree"] = str(tmp_path)
+        ledger.transition(task["id"], 0, TaskStatus.READY, "Trusted test fixture preflight")
     controller.initialize_tasks()
     controller.run_until_idle(max_iterations=10)
 
