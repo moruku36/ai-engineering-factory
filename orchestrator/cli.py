@@ -9,6 +9,41 @@ from orchestrator.adapters.antigravity import probe_antigravity_runtime
 from orchestrator.core.state import StateLedger, TaskStatus
 
 
+def _parse_github_repository(remote: str) -> str | None:
+    """Extract owner/repository from common github.com remote URL forms."""
+    value = remote.strip()
+    if value.startswith("git@github.com:"):
+        value = value.removeprefix("git@github.com:")
+    elif "github.com/" in value:
+        value = value.split("github.com/", 1)[1]
+    else:
+        return None
+
+    value = value.removesuffix(".git").strip("/")
+    parts = value.split("/")
+    if len(parts) != 2 or not all(parts):
+        return None
+    return value
+
+
+def _detect_github_repository() -> str | None:
+    """Detect the current GitHub owner/repository without repo-specific defaults."""
+    env_repo = os.environ.get("GITHUB_REPOSITORY", "").strip()
+    if len(env_repo.split("/")) == 2:
+        return env_repo
+
+    try:
+        remote = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+    except (subprocess.SubprocessError, OSError):
+        return None
+    return _parse_github_repository(remote)
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     """Run environment, security, and integration diagnostics."""
     print("=== Factory System Doctor ===")
@@ -20,27 +55,40 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
     # Git
     try:
-        git_ver = subprocess.run(["git", "--version"], capture_output=True, text=True, check=True).stdout.strip()
+        git_ver = subprocess.run(
+            ["git", "--version"], capture_output=True, text=True, check=True
+        ).stdout.strip()
         print(f"[*] Git: {git_ver} (OK)")
     except (subprocess.SubprocessError, OSError) as e:
         print(f"[!] Git check failed: {e}")
         all_ok = False
 
     # GitHub API / Branch Protection
-    try:
-        res = subprocess.run(
-            ["gh", "api", "repos/moruku36/ai-engineering-factory/branches/main", "--jq", ".protected"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if res.returncode == 0:
-            is_protected = res.stdout.strip()
-            print(f"[*] GitHub main branch protected: {is_protected} (Operational note: Free/Pro plan constraint)")
-        else:
-            print("[!] GitHub CLI unreachable or unauthenticated")
-    except (subprocess.SubprocessError, OSError):
-        print("[!] GitHub CLI not found")
+    repository = args.repository or _detect_github_repository()
+    if repository:
+        print(f"[*] GitHub repository: {repository}")
+        try:
+            res = subprocess.run(
+                [
+                    "gh",
+                    "api",
+                    f"repos/{repository}/branches/{args.branch}",
+                    "--jq",
+                    ".protected",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if res.returncode == 0:
+                is_protected = res.stdout.strip()
+                print(f"[*] GitHub {args.branch} branch protected: {is_protected}")
+            else:
+                print("[!] GitHub CLI unreachable, unauthenticated, or repository inaccessible")
+        except (subprocess.SubprocessError, OSError):
+            print("[!] GitHub CLI not found")
+    else:
+        print("[!] GitHub repository not detected; pass --repository owner/repo to inspect it")
 
     # Antigravity Runtime
     probe = probe_antigravity_runtime()
@@ -60,7 +108,10 @@ def cmd_status(args: argparse.Namespace) -> int:
     for tf in task_files:
         try:
             state = ledger.get_state(tf.stem)
-            print(f"Task: {state['task_id']:<10} Status: {state['status']:<15} Rev: {state['revision']:<3} Attempt: {state['attempt']}")
+            print(
+                f"Task: {state['task_id']:<10} Status: {state['status']:<15} "
+                f"Rev: {state['revision']:<3} Attempt: {state['attempt']}"
+            )
         except (KeyError, OSError, ValueError) as e:
             print(f"Task file {tf.name}: Error reading state ({e})")
     return 0
@@ -94,11 +145,19 @@ def cmd_cancel(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="orchestrator.cli", description="AI Engineering Factory CLI")
+    parser = argparse.ArgumentParser(
+        prog="orchestrator.cli", description="AI Engineering Factory CLI"
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # doctor
     p_doc = subparsers.add_parser("doctor", help="Run system health checks")
+    p_doc.add_argument(
+        "--repository",
+        default=None,
+        help="GitHub repository in owner/name form; auto-detected when omitted",
+    )
+    p_doc.add_argument("--branch", default="main", help="Branch to inspect for protection")
     p_doc.set_defaults(func=cmd_doctor)
 
     # status
@@ -108,7 +167,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     # approve
     p_app = subparsers.add_parser("approve", help="Issue an approval token")
-    p_app.add_argument("--action", required=True, help="Approved action (e.g. task_execution, merge_pull_request)")
+    p_app.add_argument(
+        "--action", required=True, help="Approved action (e.g. task_execution, merge_pull_request)"
+    )
     p_app.add_argument("--repository", required=True, help="Repository name")
     p_app.add_argument("--task-id", required=True, help="Task ID (e.g. FND-001)")
     p_app.add_argument("--head-sha", required=True, help="Head commit SHA")
