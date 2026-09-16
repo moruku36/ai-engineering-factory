@@ -10,6 +10,9 @@ PR #7の再評価で、OSによる実行隔離、本人認証を伴う承認、A
 
 ## 現在のCapability Milestone
 
+追加改修: [通信遮断型Linuxコンテナ実行](docs/operations/OFFLINE_CONTAINER_BOUNDARY.md)を実装。
+明示的な入力ファイルだけを渡すコマンド実行用の部品です。Native Adapter・承認・Run Loopとの接続は未完了で、全体の判定はMANUAL_ONLYのままです。
+
 - [ ] **Execution Isolation & Boundaries**  
   Registered Command Execution、Path Containment、Process Tree Control、PID Reuse Protection、Task-scoped Runtime Resource、保持型Port Reservationは実装。OSによるファイル・ネットワーク隔離と実ワーカー検証は未完了。
 

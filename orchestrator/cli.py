@@ -94,7 +94,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     # Antigravity Runtime
     probe = probe_antigravity_runtime()
     print(f"[*] Antigravity transport: {probe['status']}")
-    print("[!] OS isolation and authenticated Human approval are not implemented")
+    print("[!] Native workers lack enforced OS isolation and authenticated Human approval")
     print("[*] Execution Mode: MANUAL_ONLY")
     return 2 if all_ok else 1
 
