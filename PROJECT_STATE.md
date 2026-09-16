@@ -75,7 +75,8 @@ Status Document同士で内容が食い違う場合は、次の順序で判断�
 ## Public Repositoryとして今後やること
 
 - 第三者によるReuseを想定する場合はSoftware Licenseを選択・追加する
-- Repository Settingsで可能になった段階で`main`のServer-side Protection / Required Checksを有効化する
+- [x] ~~Repository Settingsで可能になった段階で`main`のServer-side Protection / Required Checksを有効化する~~（GitHub Rulesetにより有効化完了）
 - Compatibility Matrixを、実際に検証したVersionと常に対応させる
 - 重要なRepositoryへ適用する前にDisposable RepositoryでReal Agent Runを検証する
 - Multi-Agentによる生産性向上を主張する前に、Wall-clock Time、Retry Rate、CI Failure、Human Review Time、Cost per Merged Taskなどの実測値を蓄積する
+
