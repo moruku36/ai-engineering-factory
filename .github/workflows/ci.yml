@@ -51,6 +51,10 @@ jobs:
         run: |
           python scripts/secret_scan.py
 
+      - name: Dependency Audit Gate
+        run: |
+          python scripts/audit_dependencies.py
+
       - name: Execute Full Test Suite (Unit, Integration, Negative)
         run: |
           pytest -v tests/
