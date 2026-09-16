@@ -58,3 +58,25 @@ jobs:
       - name: Execute Full Test Suite (Unit, Integration, Negative)
         run: |
           pytest -v tests/
+
+  container-boundary:
+    name: Real offline container boundary
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+      - uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - name: Provision immutable test image on the trusted controller
+        env:
+          TEST_IMAGE: python@sha256:0d55920083f1ce1e38ac292e2772f924b4f8bb4188d336c79bf66963039e6146
+        run: |
+          docker pull "$TEST_IMAGE"
+          image_id=$(docker image inspect --format '{{.Id}}' "$TEST_IMAGE")
+          echo "FACTORY_TEST_IMAGE=$image_id" >> "$GITHUB_ENV"
+      - name: Require real boundary, timeout, concurrency and crash recovery tests
+        run: |
+          test -n "$FACTORY_TEST_IMAGE"
+          pytest -v tests/integration/test_container_acceptance.py
