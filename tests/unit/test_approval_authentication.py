@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 
+import jsonschema
 import pytest
 
 from orchestrator.core.approval import (
@@ -277,3 +278,43 @@ def test_unconfigured_auth_blocks_approval(tmp_path):
             operator_key=b"1" * 32,
             expires_at=(datetime.now(UTC) + timedelta(minutes=15)).isoformat(),
         )
+
+
+def test_approval_rejects_naive_and_invalid_expires_at(tmp_path, approver_registry, test_keys):
+    mgr = ApprovalManager(
+        approvals_dir=tmp_path / "approvals",
+        registry=approver_registry,
+        enforce_authentication=True,
+    )
+    # 1. Naive datetime rejected during token issuance by schema validation
+    with pytest.raises(jsonschema.ValidationError, match="is not a 'date-time'"):
+        mgr.issue_authenticated_token(
+            action="task_execution",
+            repository="moruku36/ai-engineering-factory",
+            task_id="TASK-001",
+            head_sha="a" * 40,
+            target_ref="refs/heads/main",
+            argv_digest="0" * 64,
+            policy_hash="1" * 64,
+            plan_hash="2" * 64,
+            approved_by="alice",
+            operator_key=test_keys["alice_key"],
+            expires_at="2026-09-17T00:00:00",  # naive: missing timezone
+        )
+
+    # 2. Invalid date string rejected by schema validation
+    with pytest.raises(jsonschema.ValidationError, match="is not a 'date-time'"):
+        mgr.issue_authenticated_token(
+            action="task_execution",
+            repository="moruku36/ai-engineering-factory",
+            task_id="TASK-001",
+            head_sha="a" * 40,
+            target_ref="refs/heads/main",
+            argv_digest="0" * 64,
+            policy_hash="1" * 64,
+            plan_hash="2" * 64,
+            approved_by="alice",
+            operator_key=test_keys["alice_key"],
+            expires_at="invalid-date-string",
+        )
+

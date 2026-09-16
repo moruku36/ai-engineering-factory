@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -80,13 +81,31 @@ def load_schema(schema_name: str) -> dict[str, Any]:
         return json.load(f)
 
 
+DEFAULT_FORMAT_CHECKER = jsonschema.FormatChecker()
+
+
+
+@DEFAULT_FORMAT_CHECKER.checks("date-time")
+def _validate_datetime_format(val: Any) -> bool:
+    """Validate RFC 3339 / ISO 8601 date-time with explicit timezone."""
+    if not isinstance(val, str):
+        return False
+    try:
+        dt = datetime.fromisoformat(val)
+        return dt.tzinfo is not None
+
+    except (ValueError, TypeError):
+        return False
+
+
 def validate_against_schema(data: dict[str, Any], schema_name: str) -> None:
     schema = load_schema(schema_name)
-    validator = Draft202012Validator(schema)
+    validator = Draft202012Validator(schema, format_checker=DEFAULT_FORMAT_CHECKER)
     errors = sorted(validator.iter_errors(data), key=lambda e: e.path)
     if errors:
         msg = "; ".join([f"{list(e.path)}: {e.message}" for e in errors])
         raise jsonschema.ValidationError(f"Schema validation failed for {schema_name}: {msg}")
+
 
 
 def compute_spec_digest(task_data: dict[str, Any]) -> str:

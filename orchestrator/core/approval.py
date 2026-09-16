@@ -371,7 +371,20 @@ class ApprovalManager:
 
             # Expiry check
             now = datetime.now(UTC)
-            exp = datetime.fromisoformat(t_expires)
+            try:
+                exp = datetime.fromisoformat(t_expires)
+
+                if exp.tzinfo is None:
+                    conn.execute("ROLLBACK;")
+                    raise ApprovalVerificationError(
+                        f"Approval token '{token_id}' expires_at lacks timezone: {t_expires}"
+                    )
+            except (ValueError, TypeError) as exc:
+                conn.execute("ROLLBACK;")
+                raise ApprovalVerificationError(
+                    f"Approval token '{token_id}' has invalid expires_at: {t_expires}"
+                ) from exc
+
             if now > exp:
                 conn.execute("ROLLBACK;")
                 raise ApprovalExpiredError(f"Approval token '{token_id}' expired at {t_expires}")
