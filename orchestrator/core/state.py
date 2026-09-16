@@ -1,7 +1,8 @@
-"""State lifecycle engine and single-writer state ledger with CAS revision."""
+"""State lifecycle engine and single-writer state ledger with cross-process CAS revision."""
 
 import json
 import os
+import sqlite3
 import threading
 from datetime import UTC, datetime
 from enum import Enum
@@ -78,9 +79,9 @@ class SingleWriterLockError(Exception):
 
 
 class StateLedger:
-    """Thread-safe single-writer state ledger managing task state transitions with CAS."""
+    """Thread-safe and multi-process transactional state ledger managing task transitions with CAS."""
 
-    _global_writer_lock = threading.Lock()
+    _global_thread_lock = threading.Lock()
 
     def __init__(self, state_dir: Path | str | None = None):
         if state_dir is None:
@@ -88,6 +89,29 @@ class StateLedger:
         else:
             self.state_dir = Path(state_dir)
         self.state_dir.mkdir(parents=True, exist_ok=True)
+        self.db_path = self.state_dir / "ledger.sqlite"
+        self._init_db()
+
+    def _get_connection(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(str(self.db_path), timeout=30.0, isolation_level=None)
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA busy_timeout=30000;")
+        return conn
+
+    def _init_db(self) -> None:
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS task_states (
+                    task_id TEXT PRIMARY KEY,
+                    revision INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    attempt INTEGER NOT NULL,
+                    data TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                """
+            )
 
     def _get_task_file(self, task_id: str) -> Path:
         return self.state_dir / f"{task_id}.json"
@@ -99,37 +123,58 @@ class StateLedger:
         policy_digest: str,
         base_sha: str | None = None,
     ) -> dict[str, Any]:
-        with self._global_writer_lock:
-            task_file = self._get_task_file(task_id)
-            if task_file.exists():
-                raise StateTransitionError(f"Task {task_id} already exists in ledger")
+        with self._global_thread_lock:
+            with self._get_connection() as conn:
+                conn.execute("BEGIN IMMEDIATE;")
+                cursor = conn.execute("SELECT task_id FROM task_states WHERE task_id = ?;", (task_id,))
+                if cursor.fetchone():
+                    conn.execute("ROLLBACK;")
+                    raise StateTransitionError(f"Task {task_id} already exists in ledger")
 
-            now = datetime.now(UTC).isoformat()
-            state_data: dict[str, Any] = {
-                "task_id": task_id,
-                "revision": 0,
-                "status": TaskStatus.PROPOSED.value,
-                "spec_digest": spec_digest,
-                "policy_digest": policy_digest,
-                "base_sha": base_sha,
-                "candidate_sha": None,
-                "attempt": 0,
-                "updated_at": now,
-                "history": [
-                    {
-                        "from_status": "NONE",
-                        "to_status": TaskStatus.PROPOSED.value,
-                        "revision": 0,
-                        "timestamp": now,
-                        "reason": "Task initialized",
-                    }
-                ],
-            }
-            validate_against_schema(state_data, "state.schema.json")
+                now = datetime.now(UTC).isoformat()
+                state_data: dict[str, Any] = {
+                    "task_id": task_id,
+                    "revision": 0,
+                    "status": TaskStatus.PROPOSED.value,
+                    "spec_digest": spec_digest,
+                    "policy_digest": policy_digest,
+                    "base_sha": base_sha,
+                    "candidate_sha": None,
+                    "attempt": 0,
+                    "updated_at": now,
+                    "history": [
+                        {
+                            "from_status": "NONE",
+                            "to_status": TaskStatus.PROPOSED.value,
+                            "revision": 0,
+                            "timestamp": now,
+                            "reason": "Task initialized",
+                        }
+                    ],
+                }
+                validate_against_schema(state_data, "state.schema.json")
+
+                conn.execute(
+                    """
+                    INSERT INTO task_states (task_id, revision, status, attempt, data, updated_at)
+                    VALUES (?, 0, ?, 0, ?, ?);
+                    """,
+                    (task_id, TaskStatus.PROPOSED.value, json.dumps(state_data), now),
+                )
+                conn.execute("COMMIT;")
+
+            # Write JSON file
+            task_file = self._get_task_file(task_id)
             self._write_state(task_file, state_data)
             return state_data
 
     def get_state(self, task_id: str) -> dict[str, Any]:
+        with self._get_connection() as conn:
+            cursor = conn.execute("SELECT data FROM task_states WHERE task_id = ?;", (task_id,))
+            row = cursor.fetchone()
+            if row:
+                return json.loads(row[0])
+
         task_file = self._get_task_file(task_id)
         if not task_file.exists():
             raise FileNotFoundError(f"No state record found for task {task_id}")
@@ -145,71 +190,107 @@ class StateLedger:
         candidate_sha: str | None = None,
         base_sha: str | None = None,
     ) -> dict[str, Any]:
-        """Atomically transition task state with CAS check and single-writer lock."""
-        with self._global_writer_lock:
-            current_state = self.get_state(task_id)
-            actual_revision = current_state["revision"]
-
-            if actual_revision != expected_revision:
-                raise CASConflictError(
-                    f"CAS conflict for task {task_id}: expected revision {expected_revision}, found {actual_revision}"
+        """Atomically transition task state with cross-process CAS check."""
+        with self._global_thread_lock:
+            with self._get_connection() as conn:
+                conn.execute("BEGIN IMMEDIATE;")
+                cursor = conn.execute(
+                    "SELECT revision, status, attempt, data FROM task_states WHERE task_id = ?;",
+                    (task_id,),
                 )
+                row = cursor.fetchone()
+                if not row:
+                    task_file = self._get_task_file(task_id)
+                    if not task_file.exists():
+                        conn.execute("ROLLBACK;")
+                        raise FileNotFoundError(f"No state record found for task {task_id}")
+                    with open(task_file, "r", encoding="utf-8") as f:
+                        current_state = json.load(f)
+                    actual_revision = current_state["revision"]
+                    current_status = TaskStatus(current_state["status"])
+                    attempt = current_state.get("attempt", 0)
+                else:
+                    actual_revision, cur_status_str, attempt, data_json = row
+                    current_status = TaskStatus(cur_status_str)
+                    current_state = json.loads(data_json)
 
-            current_status = TaskStatus(current_state["status"])
-            if current_status in TERMINAL_STATES:
-                raise StateTransitionError(f"Cannot transition from terminal state {current_status.value}")
-
-            if to_status not in ALLOWED_TRANSITIONS.get(current_status, set()):
-                raise StateTransitionError(
-                    f"Invalid transition for task {task_id}: {current_status.value} -> {to_status.value}"
-                )
-
-            attempt = current_state["attempt"]
-            # Handle retry budget check
-            if current_status == TaskStatus.FAILED and to_status == TaskStatus.READY:
-                if attempt >= MAX_RETRY_ATTEMPTS:
-                    raise StateTransitionError(
-                        f"Cannot retry task {task_id}: exceeded max attempts ({MAX_RETRY_ATTEMPTS})"
+                if actual_revision != expected_revision:
+                    conn.execute("ROLLBACK;")
+                    raise CASConflictError(
+                        f"CAS conflict for task {task_id}: expected revision {expected_revision}, found {actual_revision}"
                     )
-                attempt += 1
 
-            if current_status == TaskStatus.READY and to_status == TaskStatus.RUNNING and attempt == 0:
-                attempt = 1
+                if current_status in TERMINAL_STATES:
+                    conn.execute("ROLLBACK;")
+                    raise StateTransitionError(f"Cannot transition from terminal state {current_status.value}")
 
-            # Invalidate candidate evidence if base_sha or spec changed
-            final_candidate_sha = candidate_sha if candidate_sha is not None else current_state.get("candidate_sha")
-            final_base_sha = base_sha if base_sha is not None else current_state.get("base_sha")
+                allowed = ALLOWED_TRANSITIONS.get(current_status, set())
+                if to_status not in allowed:
+                    conn.execute("ROLLBACK;")
+                    raise StateTransitionError(
+                        f"Invalid transition for task {task_id}: {current_status.value} -> {to_status.value}"
+                    )
 
-            if base_sha is not None and base_sha != current_state.get("base_sha"):
-                # Base changed: candidate evidence invalidated
-                final_candidate_sha = None
+                # Handle retry budget check
+                if current_status == TaskStatus.FAILED and to_status == TaskStatus.READY:
+                    if attempt >= MAX_RETRY_ATTEMPTS:
+                        conn.execute("ROLLBACK;")
+                        raise StateTransitionError(
+                            f"Cannot retry task {task_id}: exceeded max attempts ({MAX_RETRY_ATTEMPTS})"
+                        )
+                    attempt += 1
 
-            now = datetime.now(UTC).isoformat()
-            new_revision = actual_revision + 1
+                if current_status == TaskStatus.READY and to_status == TaskStatus.RUNNING and attempt == 0:
+                    attempt = 1
 
-            new_state = dict(current_state)
-            new_state["revision"] = new_revision
-            new_state["status"] = to_status.value
-            new_state["candidate_sha"] = final_candidate_sha
-            new_state["base_sha"] = final_base_sha
-            new_state["attempt"] = attempt
-            new_state["updated_at"] = now
-            new_state["history"].append(
-                {
-                    "from_status": current_status.value,
-                    "to_status": to_status.value,
-                    "revision": new_revision,
-                    "timestamp": now,
-                    "reason": reason,
-                }
-            )
+                # Invalidate candidate evidence if base_sha or spec changed
+                final_candidate_sha = candidate_sha if candidate_sha is not None else current_state.get("candidate_sha")
+                final_base_sha = base_sha if base_sha is not None else current_state.get("base_sha")
 
-            validate_against_schema(new_state, "state.schema.json")
-            self._write_state(self._get_task_file(task_id), new_state)
+                if base_sha is not None and base_sha != current_state.get("base_sha"):
+                    final_candidate_sha = None
+
+                now = datetime.now(UTC).isoformat()
+                new_revision = actual_revision + 1
+                new_state: dict[str, Any] = dict(current_state)
+                new_state["revision"] = new_revision
+                new_state["status"] = to_status.value
+                new_state["candidate_sha"] = final_candidate_sha
+                new_state["base_sha"] = final_base_sha
+                new_state["attempt"] = attempt
+                new_state["updated_at"] = now
+                new_state["history"] = current_state.get("history", []) + [
+                    {
+                        "from_status": current_status.value,
+                        "to_status": to_status.value,
+                        "revision": new_revision,
+                        "timestamp": now,
+                        "reason": reason,
+                    }
+                ]
+
+                validate_against_schema(new_state, "state.schema.json")
+
+                cursor = conn.execute(
+                    """
+                    UPDATE task_states
+                    SET revision = ?, status = ?, attempt = ?, data = ?, updated_at = ?
+                    WHERE task_id = ? AND revision = ?;
+                    """,
+                    (new_revision, to_status.value, attempt, json.dumps(new_state), now, task_id, actual_revision),
+                )
+                if cursor.rowcount == 0:
+                    conn.execute("ROLLBACK;")
+                    raise CASConflictError(f"CAS conflict during commit for task {task_id}")
+
+                conn.execute("COMMIT;")
+
+            # Write JSON file
+            task_file = self._get_task_file(task_id)
+            self._write_state(task_file, new_state)
             return new_state
 
     def _write_state(self, task_file: Path, state_data: dict[str, Any]) -> None:
-        """Atomic write using temp file replace."""
         temp_file = task_file.with_suffix(".tmp")
         with open(temp_file, "w", encoding="utf-8") as f:
             json.dump(state_data, f, indent=2)
