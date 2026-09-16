@@ -12,13 +12,29 @@ from orchestrator.core.policy import HardDenyViolationError
 
 def test_probe_antigravity_detects_installed_runtime():
     probe = probe_antigravity_runtime()
-    # On this development host, Antigravity language_server / agentapi is installed
-    assert probe["available"] is True
-    assert probe["binary_path"] is not None
-    assert Path(probe["binary_path"]).exists()
+    assert "available" in probe
+    assert "probe_timestamp" in probe
+    if probe["available"]:
+        assert probe["binary_path"] is not None
+        assert Path(probe["binary_path"]).exists()
+    else:
+        assert probe["binary_path"] is None
 
 
-def test_native_antigravity_lifecycle(tmp_path):
+def test_native_antigravity_lifecycle(tmp_path, monkeypatch):
+    dummy_bin = tmp_path / "dummy_agentapi.bat"
+    dummy_bin.write_text("@echo off\nexit /b 0\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "orchestrator.adapters.antigravity.probe_antigravity_runtime",
+        lambda: {
+            "available": True,
+            "binary_path": str(dummy_bin),
+            "version": "0.1.0-test",
+            "probe_timestamp": "2026-09-16T00:00:00Z",
+        },
+    )
+
     adapter = NativeAntigravityAdapter()
     manifest = {
         "id": "TASK-001",
