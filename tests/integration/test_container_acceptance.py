@@ -18,6 +18,20 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(autouse=True)
+def fixture_daemon_diagnostics(monkeypatch):
+    """Expose daemon failures only for these generated, credential-free CI fixtures."""
+    execute = subprocess.run
+
+    def checked(*args, **kwargs):
+        result = execute(*args, **kwargs)
+        if result.returncode:
+            print("Fixture daemon diagnostic:", result.stderr[:2000])
+        return result
+
+    monkeypatch.setattr(subprocess, "run", checked)
+
+
 def make_runner(tmp_path, timeout=15):
     return OfflineContainerRunner(tmp_path / "control", os.environ["FACTORY_TEST_IMAGE"], {
         "probe": ContainerCommand(("/usr/local/bin/python", "/inputs/probe.py"), timeout),
@@ -32,6 +46,10 @@ def test_real_file_network_identity_and_control_boundary(tmp_path, monkeypatch):
     probe = f'''
 import errno, os, pathlib, socket
 assert os.getuid() == 65534
+status = dict(line.split(":", 1) for line in pathlib.Path("/proc/self/status").read_text().splitlines())
+assert int(status["CapEff"].strip(), 16) == 0
+assert status["NoNewPrivs"].strip() == "1"
+assert status["Seccomp"].strip() == "2"
 assert "FACTORY_HOST_SECRET" not in os.environ
 assert "AI_FACTORY_APPROVAL_SECRET" not in os.environ
 assert not pathlib.Path("/var/run/docker.sock").exists()
@@ -64,6 +82,13 @@ print("BOUNDARY_OK")
     assert record["cleanup"] == "CONFIRMED"
     assert boundary._find_owned(record) is None
     assert outside.read_text() == "review-owned harmless fixture"
+
+
+def test_real_nonzero_exit_is_not_success(tmp_path):
+    boundary = make_runner(tmp_path)
+    result = boundary.run("probe", {"probe.py": b"import sys; print('failed', file=sys.stderr); sys.exit(7)"})
+    assert result.exit_code == 7
+    assert "failed" in result.output
 
 
 def test_real_timeout_removes_container_and_descendants(tmp_path):

@@ -83,7 +83,8 @@ class OfflineContainerRunner:
     def _preflight(self) -> None:
         info = json.loads(self._call("info", "--format", "{{json .}}"))
         if info.get("OSType") != "linux" or not any(
-            "name=seccomp" in item for item in info.get("SecurityOptions", [])
+            "name=seccomp" in item and "profile=builtin" in item
+            for item in info.get("SecurityOptions", [])
         ):
             raise ContainerBoundaryError("Linux daemon with seccomp is required")
         image = json.loads(self._call("image", "inspect", self.image_id))[0]
