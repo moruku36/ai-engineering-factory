@@ -1,7 +1,10 @@
 # ADR-0002: Worker Execution Boundary and Sandbox Architecture
 
 ## Status
-Accepted
+Proposed / not implemented as an OS security boundary.
+The post-PR #7 review supersedes the guarantees below: the current controller uses
+host-user Popen and taskkill, not restricted tokens or Windows Job Objects. Helpers
+do not enforce worker filesystem/network isolation. See `../operations/POST_PR7_REVIEW.md`.
 
 ## Context
 In Phase 1-4, sandboxing relied on environment variable sanitization, worktree directories, and shell metacharacter checking. As detailed in `docs/operations/POST_PHASE4_REVIEW.md`, this does not constitute a hardened execution boundary:

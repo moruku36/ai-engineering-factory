@@ -4,7 +4,7 @@ Autonomous AI Engineering Factory for multi-agent software development, verifica
 
 **Current readiness: MANUAL_ONLY.** Phase 1–4 PRs are merged, but native
 Antigravity execution, GitHub publication and security acceptance are incomplete.
-See [the post-Phase-4 review](docs/operations/POST_PHASE4_REVIEW.md) before running
+See [the latest PR #7 review](docs/operations/POST_PR7_REVIEW.md) before running
 workers. The manual adapter is for trusted local fixtures, not an OS sandbox.
 
 ## Overview

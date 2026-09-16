@@ -1,7 +1,10 @@
 # ADR-0003: Control Plane Trust, Approval Integrity, and State Ledger
 
 ## Status
-Accepted
+Partially implemented / trust boundary not accepted.
+SQLite and HMAC primitives exist; authenticated Human identity, isolated key/storage,
+durable session recovery and remote operation journal do not. Prior guarantees below
+are design intentions, not verified capabilities. See `../operations/POST_PR7_REVIEW.md`.
 
 ## Context
 In previous phases, approval tokens were stored as simple JSON files in `state/approvals/`. State transitions used Python's `threading.Lock` within a single process. As documented in `docs/operations/POST_PHASE4_REVIEW.md`:

@@ -1,5 +1,9 @@
 # Handoff: Isolation, Approval Integrity, and Real Connectors Integration
 
+> Historical implementation claim, **superseded** by `POST_PR7_REVIEW.md`.
+> The PASS/completion labels below were not supported by real acceptance evidence.
+> Preserve this handoff as history; do not use it to authorize native or unattended execution.
+
 **Date**: 2026-09-16
 **Base Ref**: `main` (`f7ac1434499bbbb09f896330d581b7885d7e5e9e` via PR #6)
 **Feature Branch**: `task/iso-approval-real-integration`
