@@ -4,8 +4,8 @@
 
 > **AIエージェントの実装を、隔離実行・検証証跡・人間承認付きPRに落とすためのガバナンス層です。新しいモデルでも巨大エージェント基盤でもありません。**
 
-**現在のステータス: Experimental / MANUAL_ONLY (No license yet)**  
-本番利用を前提とした完全自律開発プラットフォームではなく、AIエージェントを使ったソフトウェア開発を安全に工程化するための実験的な基盤です（明示的なオープンソースライセンスは未選択）。現在の状態と制約は [PROJECT_STATE.md](PROJECT_STATE.md) を参照してください。
+**現在のステータス: Experimental / MANUAL_ONLY (MIT License)**  
+本番利用を前提とした完全自律開発プラットフォームではなく、AIエージェントを使ったソフトウェア開発を安全に工程化するための実験的な基盤です。現在の状態と制約は [PROJECT_STATE.md](PROJECT_STATE.md) を参照してください。
 
 ---
 
@@ -297,7 +297,5 @@ Automatic MergeやUnattended Production Deploymentは、このFactoryの目標�
 
 ## License
 
-現在、明示的なOpen Source Licenseは選択していません。
-
-Repository自体はPublicですが、第三者による再利用・改変・再配布をOpen Sourceとして許可する場合は、MIT LicenseやApache License 2.0など、利用方針に合ったLicenseを別途選択する必要があります。
+[MIT License](LICENSE) を採用しています。
 

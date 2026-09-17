@@ -38,10 +38,10 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
-      - name: Install Locked Dependencies
+      - name: Install Package (editable, with dev dependencies)
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -e ".[dev]"
 
       - name: Static Analysis & Lint (Ruff)
         run: |
@@ -68,7 +68,7 @@ jobs:
       - uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c
         with:
           python-version: "3.11"
-      - run: pip install -r requirements.txt
+      - run: pip install -e ".[dev]"
       - name: Provision immutable test image on the trusted controller
         env:
           TEST_IMAGE: python@sha256:0d55920083f1ce1e38ac292e2772f924b4f8bb4188d336c79bf66963039e6146
