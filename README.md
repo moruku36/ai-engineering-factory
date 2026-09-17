@@ -4,8 +4,8 @@
 
 > **AIエージェントの実装を、隔離実行・検証証跡・人間承認付きPRに落とすためのガバナンス層です。新しいモデルでも巨大エージェント基盤でもありません。**
 
-**現在のステータス: Experimental / MANUAL_ONLY**  
-本番利用を前提とした完全自律開発プラットフォームではなく、AIエージェントを使ったソフトウェア開発を安全に工程化するための実験的な基盤です。現在の状態と制約は [PROJECT_STATE.md](PROJECT_STATE.md) を参照してください。
+**現在のステータス: Experimental / MANUAL_ONLY (No license yet)**  
+本番利用を前提とした完全自律開発プラットフォームではなく、AIエージェントを使ったソフトウェア開発を安全に工程化するための実験的な基盤です（明示的なオープンソースライセンスは未選択）。現在の状態と制約は [PROJECT_STATE.md](PROJECT_STATE.md) を参照してください。
 
 ---
 
@@ -28,19 +28,21 @@
 | **厳格なスキーマ & DAGスケジューリング**<br>JSON Schema (2020-12) に基づくタスク検証と依存関係の自動解決 | **Antigravityネイティブ実行 (BLOCKED)**<br>公式バッチCLI/コンテナSDKが未提供のため安全側に倒して拒否（架空接続は禁止） |
 | **通信遮断型コンテナ隔離 & 成果物回収**<br>ネットワーク遮断Linuxコンテナでの実行と、パストラバーサルや保護パスを遮断した回収 | **完全自動マージ / 自動デプロイ**<br>すべてのマージや重要操作は人間の明示的レビュー・承認を必須とするガバナンス |
 | **独立検証器 (Independent Verifier)**<br>エージェントの自己申告テストログを排除し、差分から実測 `candidate_sha` を照合 | **暗黙のフォールバック**<br>障害や非対応時に自動で安全基準の低い実行モードへすり替える動作は禁止 (Fail-Closed) |
-| **本人認証付き承認 (Approval Token)**<br>HMAC-SHA256署名鍵とロール権限に基づく単回利用の暗号学的承認トークン管理 | |
+| **本人認証付き承認 (Approval Token)**<br>HMAC-SHA256署名鍵とロール権限に基づく単回利用の暗号学的承認トークン管理 | **CLIによるワンライナー自律実行**<br>誤認防止のため単一の `run` / `ingest` CLIは提供せず、Python APIやテスト経由で制御 |
 | **2相コミット操作ジャーナル**<br>SQLiteトランザクションによるGitHub操作の重複防止とクラッシュ復旧照合 | |
 | **GitHub Ruleset ブランチ保護**<br>`main` ブランチへの直push / force push禁止、およびCI通過必須化の強制 | |
 | **プロセスの安全停止**<br>タスクキャンセル時にアクティブなプロセスツリーを強制終了し、停止を確認してから状態遷移 | |
 
 ---
 
-## 🚀 クイックツアー: 最初の1タスクを動かす (Golden Path)
+## 🚀 ライフサイクルの実像: 1つのタスクがPRになるまで
 
-AI Engineering Factory の一連の流れは、**「タスク定義 → 取込・検証 → 隔離実行 → 証跡生成 → 人手承認 → PR作成」** です。
+AI Engineering Factory では、エージェントによる独断実行を許さないため、**CLIの一発自動実行コマンド (`run` / `ingest`) は意図的に提供していません**。タスクの取込・隔離実行・証跡照合は Python API (`ApprovedContainerLoop`, `OfflineContainerRunner`, `IndependentVerifier`) またはテストスイート経由で段階的に制御します。
+
+以下は、サンプルタスク `SMP-001` が実行・検証され、マージ承認を経てPRに至る実際のフローです。
 
 ### 1. タスク仕様の確認 (`tasks/examples/sample-task.yaml`)
-エージェントへの作業指示は、自然言語のチャットではなく機械可読なタスク定義として記述します。
+エージェントへの作業指示は、自然言語チャットではなく機械可読なタスク定義（YAML）として記述します。
 ```yaml
 schema_version: "2020-12"
 id: "SMP-001"
@@ -57,47 +59,63 @@ prohibited_paths:
 validation:
   - command_id: "pytest"
     timeout_seconds: 300
+approval:
+  before_execution: false  # 実行前承認は不要
+  before_merge: true      # PRマージ前の人間承認を必須化
 ```
 
-### 2. 環境診断と状態確認
+### 2. 環境診断と状態台帳の確認
 ```bash
 # 仮想環境の準備と依存パッケージのインストール
 python -m venv .venv
 # (OSに合わせて .venv をアクティベート)
 pip install -r requirements.txt
 
-# リポジトリと環境の健全性診断
+# リポジトリ健全性およびブランチ保護の診断
 python -m orchestrator.cli doctor
 
-# 状態台帳の確認
+# タスク状態台帳 (SQLite) の確認
 python -m orchestrator.cli status
 ```
 
-### 3. 本人認証付き承認の発行
-タスク実行やPR作成などの重要操作を行うには、オペレーターの秘密鍵を用いた署名付き承認を発行します。
+### 3. 隔離コンテナ実行と独立検証 (Python API)
+ワーカー（Builder）による実装後、通信遮断コンテナ内でテストを実行し、自己申告ログを信用せずに成果物ハッシュ (`candidate_sha`) を独立検証します。
+```python
+from orchestrator.core.container import OfflineContainerRunner
+from orchestrator.core.verifier import IndependentVerifier
+
+# 1. ネットワークを完全遮断したコンテナ内でテストを実行
+runner = OfflineContainerRunner(image="python:3.11-slim")
+result = runner.run(["pytest", "tests/unit/"], extract_artifacts=True)
+
+# 2. 自己申告ログを排除し、成果物差分から実測 candidate_sha を計算・照合
+verifier = IndependentVerifier()
+evidence = verifier.verify_task_execution(
+    task_id="SMP-001",
+    raw_container_logs=result.logs,
+    extracted_artifacts_dir=runner.artifacts_dir,
+    allowed_paths=["orchestrator/"],
+)
+print(f"Verified candidate_sha: {evidence.candidate_sha}")
+```
+
+### 4. マージ前の人手承認トークン発行 (CLI `approve`)
+`sample-task.yaml` のポリシー (`approval.before_merge: true`) に基づき、人間オペレーターが署名鍵を用いて単回利用の承認トークンを発行します。
 ```bash
 python -m orchestrator.cli approve \
+  --action merge_pull_request \
+  --repository moruku36/ai-engineering-factory \
   --task-id SMP-001 \
-  --scope task_execution \
-  --approver-id alice \
-  --key-file /path/to/signing.key \
-  --registry-file config/approvers.json
+  --head-sha a1b2c3d4e5f60718293a4b5c6d7e8f9012345678 \
+  --target-ref refs/heads/main \
+  --command "git merge task/smp-001" \
+  --policy-hash 0000000000000000000000000000000000000000000000000000000000000000 \
+  --plan-hash 0000000000000000000000000000000000000000000000000000000000000000 \
+  --approved-by alice \
+  --key-file /path/to/operator.key
 ```
+※ 発行されたトークンは SQLite 状態台帳に記録され、GitHub 操作実行時に1度だけ消費（Consume）されます。
 
-### 4. 品質ゲートの自己検査
-```bash
-# 静的解析
-ruff check orchestrator scripts tests
-
-# 秘密情報漏洩スキャン
-python scripts/secret_scan.py
-
-# 依存関係整合性確認
-python scripts/audit_dependencies.py
-
-# 回帰テストスイート
-pytest -v tests/
-```
 
 ---
 

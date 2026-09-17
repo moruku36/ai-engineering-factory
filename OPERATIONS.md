@@ -32,14 +32,19 @@ python -m orchestrator.cli doctor
 python -m orchestrator.cli status [--state-dir <path>]
 
 # 3. Authenticated Approval Issuance
-# Requires provisioned operator signing key and registry configuration.
+# Requires provisioned operator signing key and approval registry.
 python -m orchestrator.cli approve \
+  --action <action> \
+  --repository <owner/repo> \
   --task-id <task_id> \
-  --scope <scope> \
-  --approver-id <operator_id> \
-  --key-file /path/to/signing.key \
-  --registry-file /path/to/registry.json \
-  [--expires-in 3600]
+  --head-sha <commit_sha> \
+  --target-ref <target_ref> \
+  --command "<approved_command>" \
+  --policy-hash <policy_sha256> \
+  --plan-hash <plan_sha256> \
+  --approved-by <operator_id> \
+  --key-file /path/to/operator.key \
+  [--expires-minutes 15]
 
 # 4. Safe Cancellation of Running/Queued Tasks
 # Terminate worker process tree and confirm exit before transitioning status.
@@ -55,8 +60,9 @@ ruff check orchestrator scripts tests
 # Secret scanner (fail-closed commit range and staged diff check)
 python scripts/secret_scan.py
 
-# Dependency compatibility & OSV Vulnerability Audit (fail-closed)
-python scripts/audit_dependencies.py [--exceptions-file scripts/audit_exceptions.json]
+# Dependency consistency check (pip check)
+python scripts/audit_dependencies.py
+
 
 # Regression test suite
 pytest -v tests/
