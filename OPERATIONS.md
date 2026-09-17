@@ -1,8 +1,16 @@
 # Operations Guide
 
-**MANUAL_ONLY:** See [the latest acceptance review](docs/operations/POST_PR7_REVIEW.md).
-Native execution and authenticated Human approval are not implemented. `doctor`
-returns nonzero readiness status. Passing unit tests does not enable unattended use.
+**MANUAL_ONLY:** Offline container isolation, authenticated Human approval
+(HMAC-SHA256 signed, single-use tokens), independent artifact verification,
+and durable GitHub operation journaling are implemented — see
+[PROJECT_STATE.md](PROJECT_STATE.md) for the current capability milestone.
+What remains unimplemented is native Antigravity execution, which is
+`BLOCKED` pending an official batch/isolation SDK (see
+[ANTIGRAVITY_INTEGRATION_EVALUATION.md](docs/operations/ANTIGRAVITY_INTEGRATION_EVALUATION.md)).
+`doctor` therefore still reports `Execution Mode: MANUAL_ONLY` and a
+nonzero readiness status by design. Passing unit tests does not by itself
+enable unattended use; see `docs/operations/POST_PR7_REVIEW.md` for the
+now-superseded historical baseline this guide has moved past.
 
 ## 1. Runtime Isolation
 - All runtime transient state (active SQLite DB, worker PID records, distributed leases, raw execution logs) must be placed in `runtime-root`, completely isolated from the git repository.

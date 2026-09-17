@@ -56,8 +56,8 @@ PR #7時点ではOS隔離や本人認証付き承認が未実装でした（[`PO
 5. **GitHubはDurable Engineering Source of Truthであり、Runtime Scratch Areaではありません。**  
    Active Database、Process Metadata、Lease、Raw Session Log、CredentialなどはRepository外のRuntime Boundaryへ保存します。
 
-6. **明示的なOpen Source Licenseはまだ選択していません。**  
-   RepositoryはPublicですが、第三者によるReuse / Redistributionを許可する場合は、Open Source Projectとして公開する前にLicenseを明確にする必要があります。
+6. **Open Source Licenseは[MIT License](LICENSE)を採用しています。**  
+   第三者によるReuse / Redistribution / Modificationは、MIT Licenseの条件下で許可されています。
 
 ## Documentationの優先順位
 
@@ -74,7 +74,7 @@ Status Document同士で内容が食い違う場合は、次の順序で判断�
 
 ## Public Repositoryとして今後やること
 
-- 第三者によるReuseを想定する場合はSoftware Licenseを選択・追加する
+- [x] ~~第三者によるReuseを想定する場合はSoftware Licenseを選択・追加する~~（MIT Licenseを追加済み）
 - [x] ~~Repository Settingsで可能になった段階で`main`のServer-side Protection / Required Checksを有効化する~~（GitHub Rulesetにより有効化完了）
 - Compatibility Matrixを、実際に検証したVersionと常に対応させる
 - 重要なRepositoryへ適用する前にDisposable RepositoryでReal Agent Runを検証する

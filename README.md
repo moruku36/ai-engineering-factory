@@ -79,22 +79,33 @@ python -m orchestrator.cli status
 ```
 
 ### 3. 隔離コンテナ実行と独立検証 (Python API)
-ワーカー（Builder）による実装後、通信遮断コンテナ内でテストを実行し、自己申告ログを信用せずに成果物ハッシュ (`candidate_sha`) を独立検証します。
+ワーカー（Builder）による実装後、通信遮断コンテナ内でテストを実行し、自己申告ログを信用せずに成果物差分から実測 `candidate_sha` を独立検証します。`OfflineContainerRunner` はタグ付きイメージやフリーな `argv` を受け付けず、事前に登録された `sha256:` immutableイメージIDと `command_id` のみを実行します。
 ```python
-from orchestrator.core.container import OfflineContainerRunner
+from orchestrator.core.container import ContainerCommand, OfflineContainerRunner
+from orchestrator.core.artifacts import ArtifactCollector
 from orchestrator.core.verifier import IndependentVerifier
 
-# 1. ネットワークを完全遮断したコンテナ内でテストを実行
-runner = OfflineContainerRunner(image="python:3.11-slim")
-result = runner.run(["pytest", "tests/unit/"], extract_artifacts=True)
+# 1. 事前にプロビジョニングした immutable image (sha256 ID 必須、タグは拒否) に対し、
+#    登録済みの command_id のみを実行する（任意の argv は受け付けない）
+runner = OfflineContainerRunner(
+    control_root="/path/to/runtime-root/SMP-001",
+    image_id="sha256:" + "0" * 64,  # `docker image inspect` で取得した実 ID
+    commands={"pytest": ContainerCommand(argv=("/usr/local/bin/pytest", "tests/unit/"))},
+)
+result = runner.run("pytest", extract_artifacts=True)
 
-# 2. 自己申告ログを排除し、成果物差分から実測 candidate_sha を計算・照合
+# 2. コンテナから回収した成果物を安全にコピーし、マニフェストダイジェストを計算
+collector = ArtifactCollector(allowed_paths=["orchestrator/"])
+artifacts = collector.collect(result.artifacts_dir, "/path/to/runtime-root/SMP-001/collected")
+
+# 3. 自己申告ログを排除し、成果物差分から実測 candidate_sha を計算・照合
 verifier = IndependentVerifier()
-evidence = verifier.verify_task_execution(
+evidence = verifier.verify_candidate(
     task_id="SMP-001",
-    raw_container_logs=result.logs,
-    extracted_artifacts_dir=runner.artifacts_dir,
-    allowed_paths=["orchestrator/"],
+    base_sha="a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+    artifacts=artifacts,
+    execution_exit_code=result.exit_code,
+    execution_output=result.output,
 )
 print(f"Verified candidate_sha: {evidence.candidate_sha}")
 ```
