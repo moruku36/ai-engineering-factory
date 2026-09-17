@@ -69,7 +69,7 @@ approval:
 # 仮想環境の準備と依存パッケージのインストール
 python -m venv .venv
 # (OSに合わせて .venv をアクティベート)
-pip install -r requirements.txt
+pip install -e ".[dev]"
 
 # リポジトリ健全性およびブランチ保護の診断
 python -m orchestrator.cli doctor

@@ -47,7 +47,7 @@ class IndependentVerifier:
         base_sha: str,
         artifacts: ArtifactCollectionResult,
     ) -> str:
-        """Deterministically calculate measured candidate SHA from base SHA and artifact manifest."""
+        """Deterministically calculate the measured candidate digest from base SHA and artifact manifest."""
         hasher = hashlib.sha256()
         hasher.update(base_sha.encode("utf-8"))
         hasher.update(b":")
@@ -76,20 +76,20 @@ class IndependentVerifier:
         artifacts: ArtifactCollectionResult,
         execution_exit_code: int,
         execution_output: str,
-        builder_claimed_sha: str | None = None,
+        builder_claimed_digest: str | None = None,
     ) -> MeasuredEvidence:
         """Independently evaluate execution evidence, rejecting self-reported claims."""
         if not base_sha or len(base_sha) != 40:
             raise VerificationError("Invalid base SHA: must be 40-character commit SHA")
 
-        # Independently calculate candidate SHA
-        measured_sha = self.compute_candidate_digest(base_sha, artifacts)
+        # Independently calculate the candidate digest
+        measured_digest = self.compute_candidate_digest(base_sha, artifacts)
 
-        # Reject if builder claimed a different SHA
-        if builder_claimed_sha and builder_claimed_sha != measured_sha:
+        # Reject if builder claimed a different digest
+        if builder_claimed_digest and builder_claimed_digest != measured_digest:
             raise VerificationError(
-                f"Builder self-reported candidate SHA mismatch: "
-                f"reported '{builder_claimed_sha}' vs measured '{measured_sha}'"
+                f"Builder self-reported candidate digest mismatch: "
+                f"reported '{builder_claimed_digest}' vs measured '{measured_digest}'"
             )
 
         # Independently verify test output
@@ -103,7 +103,7 @@ class IndependentVerifier:
         return MeasuredEvidence(
             task_id=task_id,
             base_sha=base_sha,
-            candidate_digest=measured_sha,
+            candidate_digest=measured_digest,
             changed_paths=changed_paths,
             diff_digest=diff_digest,
             test_passed=test_passed,
@@ -118,12 +118,12 @@ class IndependentVerifier:
         new_artifacts: ArtifactCollectionResult,
     ) -> MeasuredEvidence | None:
         """Invalidate prior approval/review evidence if candidate inputs or artifacts mutated."""
-        new_sha = IndependentVerifier.compute_candidate_digest(new_base_sha, new_artifacts)
-        if new_sha != prior_evidence.candidate_digest or new_base_sha != prior_evidence.base_sha:
+        new_digest = IndependentVerifier.compute_candidate_digest(new_base_sha, new_artifacts)
+        if new_digest != prior_evidence.candidate_digest or new_base_sha != prior_evidence.base_sha:
             return MeasuredEvidence(
                 task_id=prior_evidence.task_id,
                 base_sha=new_base_sha,
-                candidate_digest=new_sha,
+                candidate_digest=new_digest,
                 changed_paths=sorted(new_artifacts.collected_files.keys()),
                 diff_digest=new_artifacts.manifest_digest,
                 test_passed=False,

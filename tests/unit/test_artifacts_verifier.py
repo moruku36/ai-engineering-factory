@@ -122,15 +122,15 @@ def test_independent_verifier_rejects_builder_claimed_mismatch(tmp_path):
     artifacts = collector.collect(src, dst)
 
     verifier = IndependentVerifier()
-    fake_claimed_sha = "f" * 40
-    with pytest.raises(VerificationError, match="Builder self-reported candidate SHA mismatch"):
+    fake_claimed_digest = "f" * 40
+    with pytest.raises(VerificationError, match="Builder self-reported candidate digest mismatch"):
         verifier.verify_candidate(
             task_id="TASK-102",
             base_sha="2" * 40,
             artifacts=artifacts,
             execution_exit_code=0,
             execution_output="success",
-            builder_claimed_sha=fake_claimed_sha,
+            builder_claimed_digest=fake_claimed_digest,
         )
 
 
