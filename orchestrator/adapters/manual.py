@@ -168,7 +168,7 @@ class ManualAdapter(ExecutionAdapter):
             "spec_sha": "0" * 64,
             "policy_sha": "0" * 64,
             "base_sha": "0" * 40,
-            "candidate_sha": "0" * 40,
+            "candidate_digest": "0" * 40,
             "changed_paths": ["orchestrator/adapters/manual.py"],
             "validations": run_info["validations"],
             "artifact_hashes": artifact_hashes,

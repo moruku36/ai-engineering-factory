@@ -92,7 +92,7 @@ class RunLoopController:
                     expected_revision=cur_state["revision"],
                     to_status=TaskStatus.VALIDATING,
                     reason="Execution finished, validating evidence",
-                    candidate_sha=evidence.get("candidate_sha"),
+                    candidate_digest=evidence.get("candidate_digest"),
                 )
                 # Worker completion is not independent validation/review or a
                 # remotely observed Human merge. Keep dependencies blocked.

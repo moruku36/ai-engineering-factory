@@ -11,7 +11,7 @@
     "spec_sha",
     "policy_sha",
     "base_sha",
-    "candidate_sha",
+    "candidate_digest",
     "changed_paths",
     "validations",
     "artifact_hashes",
@@ -44,7 +44,7 @@
       "type": "string",
       "pattern": "^[a-f0-9]{40}$"
     },
-    "candidate_sha": {
+    "candidate_digest": {
       "type": "string",
       "pattern": "^[a-f0-9]{40}$"
     },

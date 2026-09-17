@@ -12,7 +12,7 @@ from orchestrator.core.state import (
 SAMPLE_SPEC_DIGEST = "a" * 64
 SAMPLE_POLICY_DIGEST = "b" * 64
 SAMPLE_BASE_SHA = "c" * 40
-SAMPLE_CANDIDATE_SHA = "d" * 40
+SAMPLE_CANDIDATE_DIGEST = "d" * 40
 
 
 @pytest.fixture
@@ -44,10 +44,10 @@ def test_state_lifecycle_happy_path(ledger):
 
     # RUNNING -> VALIDATING
     state = ledger.transition(
-        task_id, 2, TaskStatus.VALIDATING, "Worker candidate ready", candidate_sha=SAMPLE_CANDIDATE_SHA
+        task_id, 2, TaskStatus.VALIDATING, "Worker candidate ready", candidate_digest=SAMPLE_CANDIDATE_DIGEST
     )
     assert state["status"] == TaskStatus.VALIDATING.value
-    assert state["candidate_sha"] == SAMPLE_CANDIDATE_SHA
+    assert state["candidate_digest"] == SAMPLE_CANDIDATE_DIGEST
     assert state["revision"] == 3
 
     # VALIDATING -> REVIEW
@@ -120,12 +120,12 @@ def test_base_change_invalidates_candidate(ledger):
     ledger.initialize_task(task_id, SAMPLE_SPEC_DIGEST, SAMPLE_POLICY_DIGEST, SAMPLE_BASE_SHA)
     ledger.transition(task_id, 0, TaskStatus.READY, "Ready")
     ledger.transition(task_id, 1, TaskStatus.RUNNING, "Run")
-    ledger.transition(task_id, 2, TaskStatus.VALIDATING, "Validating", candidate_sha=SAMPLE_CANDIDATE_SHA)
+    ledger.transition(task_id, 2, TaskStatus.VALIDATING, "Validating", candidate_digest=SAMPLE_CANDIDATE_DIGEST)
     state = ledger.transition(task_id, 3, TaskStatus.REVIEW, "Review")
-    assert state["candidate_sha"] == SAMPLE_CANDIDATE_SHA
+    assert state["candidate_digest"] == SAMPLE_CANDIDATE_DIGEST
 
     # Base changes during REVIEW -> transition back to READY with new base_sha
     new_base_sha = "e" * 40
     state = ledger.transition(task_id, 4, TaskStatus.READY, "Rebased onto new main", base_sha=new_base_sha)
     assert state["base_sha"] == new_base_sha
-    assert state["candidate_sha"] is None  # Candidate invalidated!
+    assert state["candidate_digest"] is None  # Candidate invalidated!

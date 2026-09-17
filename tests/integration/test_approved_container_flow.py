@@ -64,7 +64,7 @@ def test_real_approved_execution_resumes_as_validation_only(tmp_path):
     restarted.step()
     state = restarted.state_ledger.get_state(task["id"])
     assert state["status"] == "VALIDATING"
-    assert state["candidate_sha"] is None
+    assert state["candidate_digest"] is None
     session = fresh.recover_task(task, task["worktree"])
     assert "FLOW_OK" in fresh.collect_results(session)["output"]
     assert len(list(adapter.runner.root.glob("*/record.json"))) == 1

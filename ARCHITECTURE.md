@@ -4,6 +4,23 @@
 
 ---
 
+## 0. Current vs Target: 読み方の注意
+
+本ドキュメントの図は、**現在実装済みのコンポーネント**と、**将来像として設計はしているが未実装のコンポーネント**を区別せずに描いています。読む際は以下の対応表を先に確認してください。実装の正確な状態は常に `main` の実コードと `PROJECT_STATE.md` が優先します（矛盾時の優先順位は `PROJECT_STATE.md` の「Documentationの優先順位」節を参照）。
+
+| 図中の表記 | 状態 | 実際の対応 |
+| :--- | :--- | :--- |
+| `orchestrator.engine`（ポリシーエンジン / スケジューラ） | ✅ Implemented（名称のみ異なる） | 単一モジュールではなく `orchestrator/core/policy.py`（PolicyEngine）、`orchestrator/core/scheduler.py`、`orchestrator/core/loop.py` に分割実装 |
+| 状態台帳 (SQLite + CAS) | ✅ Implemented | `orchestrator/core/state.py` (`StateLedger`) |
+| 承認トークン管理 | ✅ Implemented | `orchestrator/core/approval.py` (`ApprovalManager`)、`orchestrator/core/auth.py` |
+| 運用 CLI (`doctor` / `status` / `approve` / `cancel`) | ✅ Implemented | `orchestrator/cli.py` |
+| 実行アダプタ (Manual / ApprovedContainer) | ✅ Implemented | `orchestrator/adapters/manual.py`、`orchestrator/adapters/container.py` |
+| 実行アダプタ (Antigravity Native) | ⛔ Blocked | `orchestrator/adapters/antigravity.py` は実機調査の結果 `NativeAntigravityAdapter` をBLOCKEDと確定（公式SDK不在）。暗黙フォールバックは禁止 |
+| Builder / Tester / Reviewer（別Agentプロセス） | 🧪 Conceptual Role | コード上は独立したAgentクラスではなく、`AGENTS.md` が定義するRole制約（`allowed_paths`、ReadOnly等）を実行アダプタ・ポリシーエンジンが強制する形で表現されている |
+| `factory/state` ブランチ (監査投影) | 🚧 Planned | 現時点のリポジトリには存在しない。監査投影は `state/` ディレクトリ配下（`main` ブランチ管理）に置かれている |
+
+---
+
 ## 1. システムアーキテクチャ全体像
 
 ![AI Engineering Factory Architecture](docs/assets/architecture.jpg)
@@ -18,14 +35,14 @@ flowchart TB
         Human["🧑‍💻 人間 / アーキテクト\n(PO, Engineers)"]
         Spec["📋 要件・設計・タスク計画\n(JSON Schema 2020-12 / Tasks)"]
         MainRepo[("📦 Git main ブランチ\n(検証済みコード・仕様 SoT)")]
-        StateRepo[("📜 Git factory/state ブランチ\n(監査向け状態投影)")]
+        StateRepo[("📜 🚧Planned: factory/state ブランチ\n(現在は main の state/ 配下に投影)")]
         Human --> Spec --> MainRepo
     end
 
     subgraph Layer2["② 制御プレーン (Control Plane: orchestrator/)"]
         direction TB
         Ingest["タスク取込 / 計画読込 / スキーマ検証"]
-        Engine["ポリシーエンジン / 依存関係スケジューラ"]
+        Engine["✅ポリシーエンジン / 依存関係スケジューラ\n(policy.py / scheduler.py / loop.py)"]
         Lease["リース・並列実行管理 / 承認トークン管理"]
         Ledger[("状態台帳 (SQLite + CAS)\n単一書き込み (Single Writer)")]
         PRMgr["PR / 公開管理"]
@@ -40,12 +57,12 @@ flowchart TB
     subgraph Layer4["④ 実行・隔離境界 (Execution Boundary: runtime-root)"]
         direction TB
         Worktree["タスク別 Branch / Worktree\n(一時的・使い捨て実行環境)"]
-        Adapters["実行アダプタ\n(Antigravity / Manual / Subagent)"]
+        Adapters["実行アダプタ\n(✅Manual / ApprovedContainer, ⛔Antigravity Native: BLOCKED)"]
         Isolation["ランタイム隔離 / パス逸脱防止\nプロセス管理 / ポート隔離 / 生ログ・PID・一時DB"]
         Adapters --> Worktree <--> Isolation
     end
 
-    subgraph Layer3["③ ワーカーレイヤー (Worker Layer: AI Agents)"]
+    subgraph Layer3["③ ワーカーレイヤー (Worker Layer: AI Agents) — 🧪Conceptual Role"]
         Builder["🔨 Builder\n実装・ビルド (allowed_paths)"]
         Tester["🧪 Tester / Validator\nテスト・検証・証跡生成"]
         Reviewer["🔍 Reviewer\nレビュー・合否判定 (ReadOnly)"]
@@ -97,7 +114,7 @@ flowchart TB
 
 | 原則 | 目的・動機 | 実装機構 |
 | :--- | :--- | :--- |
-| **単一の状態書き込み**<br>*(Single Writer)* | 複数エージェントや分散プロセスによる競合・デッドロック・状態不整合の完全排除。 | 状態遷移は `orchestrator.engine` 内の SQLite トランザクションと CAS (Compare-And-Swap) リビジョン番号で直列化。分散 Git ロックは禁止。 |
+| **単一の状態書き込み**<br>*(Single Writer)* | 複数エージェントや分散プロセスによる競合・デッドロック・状態不整合の完全排除。 | 状態遷移は `orchestrator/core/state.py` の SQLite トランザクションと CAS (Compare-And-Swap) リビジョン番号で直列化。分散 Git ロックは禁止。 |
 | **重要操作は承認必須**<br>*(Human-in-the-Loop)* | AI エージェントのハルシネーションや不正コードによる本番破壊・予期せぬ外部公開を防止。 | • `main` ブランチ直接 push 禁止（保護ルール必須）。<br>• 自動マージ・自動本番デプロイの全面禁止。<br>• 承認トークン（CLI: `orchestrator.cli approve`）と人間レビュー必須。 |
 | **永続記憶はリポジトリ中心**<br>*(Git-backed SoT)* | すべての成果物・仕様・検証結果の再現性・監査性を長期的に担保。 | • `main` ブランチがコードおよび仕様（スキーマ・タスク定義）の真実の源泉 (SoT)。<br>• `factory/state` ブランチに監査用イベント履歴を投影。 |
 | **SoT と使い捨てランタイムの完全分離**<br>*(Isolation Boundary)* | エージェントによるリポジトリ汚染、未管理ファイルの残留、シークレット漏洩の防止。 | 作業はすべて Git 外の `runtime-root` 配下の使い捨て Worktree で実行。生ログ、PID、一時DB、ソケットはリポジトリ外に閉じ込める。 |
@@ -111,7 +128,7 @@ flowchart TB
 
 | 領域 | 格納対象 | 保持期間 | アクセス権限 | 監査性 |
 | :--- | :--- | :--- | :--- | :--- |
-| **Git リポジトリ (SoT)**<br>`main` / `factory/state` | • 仕様・スキーマ (`schemas/`)<br>• 制御プレーン実装 (`orchestrator/`)<br>• タスク定義 (`tasks/`)<br>• 状態投影 (`state/`)<br>• ドキュメント (`docs/`) | 永続 (Git 履歴) | 制御プレーンのみコミット可能<br>エージェントは直接変更不可 | 高 (Git コミット履歴・署名) |
+| **Git リポジトリ (SoT)**<br>`main`（`factory/state`は🚧Planned、現状は`state/`が`main`配下） | • 仕様・スキーマ (`schemas/`)<br>• 制御プレーン実装 (`orchestrator/`)<br>• タスク定義 (`tasks/`)<br>• 状態投影 (`state/`)<br>• ドキュメント (`docs/`) | 永続 (Git 履歴) | 制御プレーンのみコミット可能<br>エージェントは直接変更不可 | 高 (Git コミット履歴・署名) |
 | **実行・隔離境界**<br>`runtime-root` (Git 外) | • タスク別 Worktree<br>• 一時ソケット・ポート<br>• プロセス PID ファイル<br>• 未加工の実行生ログ<br>• 一時 SQLite DB | 一時的 (タスク完了後に破棄) | Builder/Tester が隔離実行<br>`allowed_paths` スコープ内のみ | 中 (証跡バンドルに要約後、破棄) |
 
 ```mermaid
@@ -121,7 +138,7 @@ graph LR
         Code["ソースコード / orchestrator/"]
         Schemas["スキーマ定義 / schemas/"]
         TaskDefs["タスク仕様 / tasks/"]
-        Audit["監査投影 / factory/state"]
+        Audit["監査投影 / state/ (🚧factory/state分離はPlanned)"]
     end
 
     subgraph Boundary["🛡️ 実行・隔離境界 (Isolation Boundary)"]

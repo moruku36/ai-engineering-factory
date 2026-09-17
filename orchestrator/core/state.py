@@ -139,7 +139,7 @@ class StateLedger:
                     "spec_digest": spec_digest,
                     "policy_digest": policy_digest,
                     "base_sha": base_sha,
-                    "candidate_sha": None,
+                    "candidate_digest": None,
                     "attempt": 0,
                     "updated_at": now,
                     "history": [
@@ -187,7 +187,7 @@ class StateLedger:
         expected_revision: int,
         to_status: TaskStatus,
         reason: str,
-        candidate_sha: str | None = None,
+        candidate_digest: str | None = None,
         base_sha: str | None = None,
     ) -> dict[str, Any]:
         """Atomically transition task state with cross-process CAS check."""
@@ -244,18 +244,18 @@ class StateLedger:
                     attempt = 1
 
                 # Invalidate candidate evidence if base_sha or spec changed
-                final_candidate_sha = candidate_sha if candidate_sha is not None else current_state.get("candidate_sha")
+                final_candidate_digest = candidate_digest if candidate_digest is not None else current_state.get("candidate_digest")
                 final_base_sha = base_sha if base_sha is not None else current_state.get("base_sha")
 
                 if base_sha is not None and base_sha != current_state.get("base_sha"):
-                    final_candidate_sha = None
+                    final_candidate_digest = None
 
                 now = datetime.now(UTC).isoformat()
                 new_revision = actual_revision + 1
                 new_state: dict[str, Any] = dict(current_state)
                 new_state["revision"] = new_revision
                 new_state["status"] = to_status.value
-                new_state["candidate_sha"] = final_candidate_sha
+                new_state["candidate_digest"] = final_candidate_digest
                 new_state["base_sha"] = final_base_sha
                 new_state["attempt"] = attempt
                 new_state["updated_at"] = now

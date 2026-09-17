@@ -21,7 +21,7 @@ In previous phases, approval tokens were stored as simple JSON files in `state/a
 2. **Atomic Token Lifecycle**:
    - Token status (`ISSUED`, `CONSUMED`, `REVOKED`, `EXPIRED`) is tracked in SQLite with `BEGIN IMMEDIATE` transactions.
    - Consumption enforces an atomic CAS transition: `UPDATE approvals SET status = 'CONSUMED' WHERE token_id = ? AND status = 'ISSUED'`. If 0 rows affected, consume fails immediately.
-   - Tokens are bound to `(action, repository, task_id, run_id, candidate_sha, target_ref, argv_digest, policy_digest, plan_digest, expires_at, nonce)`. Any deviation in parameters causes verification failure.
+   - Tokens are bound to `(action, repository, task_id, run_id, candidate_digest, target_ref, argv_digest, policy_digest, plan_digest, expires_at, nonce)`. Any deviation in parameters causes verification failure.
 3. **Persistent Inter-Process State Ledger**:
    - `StateLedger` is upgraded to use SQLite with WAL mode and transactional CAS updates for task state transitions.
    - Task attempt counts, retry budgets, and lease epochs are persisted durably so that process restarts do not reset budgets.

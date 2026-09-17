@@ -25,6 +25,20 @@ The following actions require explicit, one-time, cryptographically bound Human 
 - Tokens are single-use (consumed immediately upon verification) and non-transferable.
 - Declarations like `approved: true` inside untrusted YAML or PR issue comments are treated as untrusted and ignored.
 
+### 3.1 Guarantee Scope
+The Approval Token protects **Factory-mediated operations only** (actions issued
+through `orchestrator.cli approve` and consumed by the Control Plane, such as
+`merge_pull_request`). It does not, by itself, block a repository maintainer
+from merging a Pull Request directly through the GitHub UI or API — that
+boundary is enforced separately by the repository's branch protection /
+Ruleset configuration (`required_approving_review_count`, required status
+checks, etc.), which must be configured and verified independently (`doctor`
+or the GitHub UI). Treat the Approval Token and GitHub's own branch
+protection as two distinct, complementary controls rather than a single
+guarantee — a Ruleset with `required_approving_review_count: 0` still blocks
+direct/force pushes and requires CI to pass, but does not by itself require a
+second human reviewer's sign-off on `main`.
+
 ## 4. Worker Boundary & Sandboxing
 - Workers are NEVER granted GitHub write tokens, cloud production credentials, host user home directory access, SSH agents, Docker daemon sockets, or cloud instance metadata endpoints.
 - Publisher identity is strictly separated from Cloud Runner identity.

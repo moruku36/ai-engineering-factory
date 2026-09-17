@@ -105,8 +105,8 @@ def test_independent_verifier_happy_path(tmp_path):
         execution_output="collected 1 item\n\n1 passed in 0.05s\n",
     )
 
-    assert evidence.candidate_sha is not None
-    assert len(evidence.candidate_sha) == 40
+    assert evidence.candidate_digest is not None
+    assert len(evidence.candidate_digest) == 40
     assert evidence.test_passed is True
     assert evidence.state == EvidenceState.VALID
     assert "test.py" in evidence.changed_paths
@@ -187,4 +187,4 @@ def test_independent_verifier_invalidates_on_mutation(tmp_path):
 
     assert invalidated is not None
     assert invalidated.state == EvidenceState.INVALIDATED
-    assert invalidated.candidate_sha != evidence1.candidate_sha
+    assert invalidated.candidate_digest != evidence1.candidate_digest

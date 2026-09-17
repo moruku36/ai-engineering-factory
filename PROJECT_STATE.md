@@ -20,13 +20,13 @@ PR #7時点ではOS隔離や本人認証付き承認が未実装でした（[`PO
 全体の判定は、Antigravity Native Runtime公式SDK不在のため、依然として **MANUAL_ONLY** です。
 
 - [x] **Execution Isolation & Boundaries**  
-  Linuxの通信遮断型コンテナ実行と検証、保持型Port Reservation、安全な成果物回収（パストラバーサル/symlink/サイズ制限/保護パス遮断）および独立検証（candidate_sha実測・ログ自己申告排除）を実装。
+  Linuxの通信遮断型コンテナ実行と検証、保持型Port Reservation、安全な成果物回収（パストラバーサル/symlink/サイズ制限/保護パス遮断）および独立検証（candidate_digest実測・ログ自己申告排除）を実装。
 
 - [x] **Approval, Trust & State Ledger**  
   単回承認トークンを隔離実行へ接続し、SQLiteへの結果保存・再起動時の照合を追加。鍵指紋導出・HMAC-SHA256本人認証付き承認発行（ApproverRegistryによる権限・失効検証）を実装。CLI承認発行を再有効化。
 
 - [x] **Evidence & Quality Gates**  
-  Secret Scan、依存関係整合性検査 (`pip check`)、実測candidate_sha照合、Lint / Test CIを実装。実行中ワーカーの安全なキャンセル（プロセスツリー停止確認）をCLIに実装。
+  Secret Scan、依存関係整合性検査 (`pip check`)、実測candidate_digest照合、Lint / Test CIを実装。実行中ワーカーの安全なキャンセル（プロセスツリー停止確認）をCLIに実装。
 
 - [ ] **Antigravity Integration (BLOCKED)**  
   Manual / Test Adapterは存在。実機調査により利用可能な公式バッチ実行/プロセス隔離SDKが不在であることを確認し、Native RuntimeをBLOCKEDと評価。暗黙のManual fallbackを厳格に遮断。
@@ -56,8 +56,8 @@ PR #7時点ではOS隔離や本人認証付き承認が未実装でした（[`PO
 5. **GitHubはDurable Engineering Source of Truthであり、Runtime Scratch Areaではありません。**  
    Active Database、Process Metadata、Lease、Raw Session Log、CredentialなどはRepository外のRuntime Boundaryへ保存します。
 
-6. **明示的なOpen Source Licenseはまだ選択していません。**  
-   RepositoryはPublicですが、第三者によるReuse / Redistributionを許可する場合は、Open Source Projectとして公開する前にLicenseを明確にする必要があります。
+6. **Open Source Licenseは[MIT License](LICENSE)を採用しています。**  
+   第三者によるReuse / Redistribution / Modificationは、MIT Licenseの条件下で許可されています。
 
 ## Documentationの優先順位
 
@@ -74,7 +74,7 @@ Status Document同士で内容が食い違う場合は、次の順序で判断�
 
 ## Public Repositoryとして今後やること
 
-- 第三者によるReuseを想定する場合はSoftware Licenseを選択・追加する
+- [x] ~~第三者によるReuseを想定する場合はSoftware Licenseを選択・追加する~~（MIT Licenseを追加済み）
 - [x] ~~Repository Settingsで可能になった段階で`main`のServer-side Protection / Required Checksを有効化する~~（GitHub Rulesetにより有効化完了）
 - Compatibility Matrixを、実際に検証したVersionと常に対応させる
 - 重要なRepositoryへ適用する前にDisposable RepositoryでReal Agent Runを検証する

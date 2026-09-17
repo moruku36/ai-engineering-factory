@@ -11,7 +11,7 @@
     "spec_digest",
     "policy_digest",
     "base_sha",
-    "candidate_sha",
+    "candidate_digest",
     "attempt",
     "updated_at",
     "history"
@@ -52,7 +52,7 @@
     "base_sha": {
       "type": ["string", "null"]
     },
-    "candidate_sha": {
+    "candidate_digest": {
       "type": ["string", "null"]
     },
     "attempt": {

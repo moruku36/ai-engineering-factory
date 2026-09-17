@@ -122,7 +122,7 @@ def test_completed_session_survives_restart_without_redispatch(tmp_path):
     restarted.initialize_tasks()
     restarted.step()
     assert restarted.state_ledger.get_state(task["id"])["status"] == "VALIDATING"
-    assert restarted.state_ledger.get_state(task["id"])["candidate_sha"] is None
+    assert restarted.state_ledger.get_state(task["id"])["candidate_digest"] is None
     assert adapter.runner.run.call_count == 1
     assert restarted.lease_manager.get_active_lease(task["id"]) is None
 

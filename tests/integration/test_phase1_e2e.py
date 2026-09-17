@@ -81,12 +81,12 @@ def test_phase1_e2e_single_agent_flow(tmp_path):
     )
 
     # Step 8: Transition to VALIDATING with candidate SHA
-    candidate_sha = "1" * 40
+    candidate_digest = "1" * 40
     state = ledger.transition(
-        task_id, 2, TaskStatus.VALIDATING, "Validating candidate diff", candidate_sha=candidate_sha
+        task_id, 2, TaskStatus.VALIDATING, "Validating candidate diff", candidate_digest=candidate_digest
     )
     assert state["status"] == TaskStatus.VALIDATING.value
-    assert state["candidate_sha"] == candidate_sha
+    assert state["candidate_digest"] == candidate_digest
 
     # Step 9: Transition to REVIEW
     state = ledger.transition(task_id, 3, TaskStatus.REVIEW, "Automated validation passed")
@@ -101,7 +101,7 @@ def test_phase1_e2e_single_agent_flow(tmp_path):
     exec_result["spec_sha"] = spec_digest
     exec_result["policy_sha"] = policy_digest
     exec_result["base_sha"] = base_sha
-    exec_result["candidate_sha"] = candidate_sha
+    exec_result["candidate_digest"] = candidate_digest
     validate_against_schema(exec_result, "result.schema.json")
     assert exec_result["status"] == "SUCCESS"
 
@@ -115,7 +115,7 @@ def test_phase1_e2e_single_agent_flow(tmp_path):
         spec_digest=spec_digest,
         policy_digest=policy_digest,
         base_sha=base_sha,
-        head_sha=candidate_sha,
+        head_sha=candidate_digest,
         completed_steps=["validation", "review"],
         pending_steps=["human_merge"],
         changed_paths=candidate_changes,
@@ -128,7 +128,7 @@ def test_phase1_e2e_single_agent_flow(tmp_path):
         required_approvals=["merge_pull_request"],
     )
     resumed = handoff_mgr.verify_resume_preflight(task_id, spec_digest, base_sha)
-    assert resumed["head_sha"] == candidate_sha
+    assert resumed["head_sha"] == candidate_digest
     assert resumed["next_action"] == "Awaiting human merge on GitHub remote"
 
 
