@@ -26,7 +26,7 @@ class MockAdapter:
     def collect_results(self, session_id):
         return {
             "status": "SUCCESS",
-            "candidate_sha": "a" * 40,
+            "candidate_digest": "a" * 40,
             "changed_paths": ["src/app.py"],
             "test_summary": {"passed": 5, "failed": 0},
         }
@@ -76,7 +76,7 @@ def test_run_loop_completes_single_task(tmp_path):
     state = ledger.get_state("TASK-001")
     assert state["status"] == TaskStatus.VALIDATING.value
     assert controller.scheduler.task_statuses["TASK-001"] == TaskStatus.VALIDATING
-    assert state["candidate_sha"] == "a" * 40
+    assert state["candidate_digest"] == "a" * 40
 
 
 def test_run_loop_blocks_downstream_on_failure(tmp_path):

@@ -12,7 +12,7 @@
 | 領域 | ステータス | 判定根拠 |
 | :--- | :--- | :--- |
 | 1. 本人認証付き承認と鍵管理 | **VERIFIED** | 鍵指紋導出・HMAC-SHA256署名、ApproverRegistryによる権限・失効検証、CLI exit 2 遮断を単体・統合テストで実証。 |
-| 2. 成果物回収と独立検証 | **VERIFIED** | ArtifactCollector（パストラバーサル/symlink/サイズ制限/保護パス遮断）およびIndependentVerifier（実測candidate_sha検証、ログ自己申告排除）を実証。 |
+| 2. 成果物回収と独立検証 | **VERIFIED** | ArtifactCollector（パストラバーサル/symlink/サイズ制限/保護パス遮断）およびIndependentVerifier（実測candidate_digest検証、ログ自己申告排除）を実証。 |
 | 3. Antigravity実接続・通信制御 | **BLOCKED** | ホスト実機調査により公式SDK・CLI（agy）の不在を確認。暗黙のManual fallbackを遮断しBLOCKEDとして確定。 |
 | 4. GitHub操作永続化・実タスク検証 | **VERIFIED** | 2相コミットSQLiteジャーナルによる障害復旧・冪等性、実測PR/マージ検証を実装。GitHub側`main`ブランチ保護（Ruleset）を有効化済（`protected: true`）。 |
 | 5. 並列復旧・キャンセル・依存整合性 | **VERIFIED** | プロセスツリー強制終了・停止確認型キャンセル、および依存関係整合性確認（`pip check`）を実証。 |
@@ -43,7 +43,7 @@
     - 保護パス（`.git`, `.env`, `*.sqlite`, `*.db`, `*.lease` 等）の回収拒否。
     - ファイルサイズ上限（単一ファイル 10MB、総容量 50MB）および `allowed_paths`（ワイルドカード対応）フィルタ。
   - `orchestrator/core/verifier.py`: `IndependentVerifier` 実装。
-    - 回収成果物に基づく `candidate_sha`（SHA-256）の実測計算。
+    - 回収成果物に基づく `candidate_digest`（SHA-256）の実測計算。
     - ワークスペース汚染や改ざんが発生した際の `INVALIDATED` 状態遷移。
     - コンテナエージェントが出力した自己申告テストログを盲信せず、独立検証器による検証必須化。
   - `orchestrator/core/container.py` & `orchestrator/adapters/container.py`:

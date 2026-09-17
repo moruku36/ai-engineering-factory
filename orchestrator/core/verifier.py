@@ -27,7 +27,7 @@ class EvidenceState(str, Enum):
 class MeasuredEvidence:
     task_id: str
     base_sha: str
-    candidate_sha: str
+    candidate_digest: str
     changed_paths: list[str]
     diff_digest: str
     test_passed: bool
@@ -103,7 +103,7 @@ class IndependentVerifier:
         return MeasuredEvidence(
             task_id=task_id,
             base_sha=base_sha,
-            candidate_sha=measured_sha,
+            candidate_digest=measured_sha,
             changed_paths=changed_paths,
             diff_digest=diff_digest,
             test_passed=test_passed,
@@ -119,11 +119,11 @@ class IndependentVerifier:
     ) -> MeasuredEvidence | None:
         """Invalidate prior approval/review evidence if candidate inputs or artifacts mutated."""
         new_sha = IndependentVerifier.compute_candidate_digest(new_base_sha, new_artifacts)
-        if new_sha != prior_evidence.candidate_sha or new_base_sha != prior_evidence.base_sha:
+        if new_sha != prior_evidence.candidate_digest or new_base_sha != prior_evidence.base_sha:
             return MeasuredEvidence(
                 task_id=prior_evidence.task_id,
                 base_sha=new_base_sha,
-                candidate_sha=new_sha,
+                candidate_digest=new_sha,
                 changed_paths=sorted(new_artifacts.collected_files.keys()),
                 diff_digest=new_artifacts.manifest_digest,
                 test_passed=False,

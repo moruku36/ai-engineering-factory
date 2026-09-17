@@ -154,7 +154,7 @@ class ApprovedContainerAdapter(ExecutionAdapter):
             if result.run_id != run_id:
                 raise ContainerAdmissionError("Container result identity differs from admission")
 
-            candidate_sha = None
+            candidate_digest = None
             changed_paths = []
             if result.exit_code == 0 and result.artifacts_dir and result.artifacts_dir.exists():
                 has_files = any(result.artifacts_dir.iterdir())
@@ -171,7 +171,7 @@ class ApprovedContainerAdapter(ExecutionAdapter):
                             execution_exit_code=result.exit_code,
                             execution_output=result.output,
                         )
-                        candidate_sha = measured.candidate_sha
+                        candidate_digest = measured.candidate_digest
                         changed_paths = measured.changed_paths
                     except (ArtifactExtractionError, VerificationError) as exc:
                         raise ContainerAdmissionError(f"Artifact verification failed: {exc}") from exc
@@ -182,7 +182,7 @@ class ApprovedContainerAdapter(ExecutionAdapter):
                 "exit_code": result.exit_code,
                 "output": result.output,
                 "execution_digest": context["argv_digest"],
-                "candidate_sha": candidate_sha,
+                "candidate_digest": candidate_digest,
                 "changed_paths": changed_paths,
             }
             self._status(run_id, evidence["status"], evidence)

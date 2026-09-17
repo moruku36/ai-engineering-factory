@@ -27,7 +27,7 @@
 | :--- | :--- |
 | **厳格なスキーマ & DAGスケジューリング**<br>JSON Schema (2020-12) に基づくタスク検証と依存関係の自動解決 | **Antigravityネイティブ実行 (BLOCKED)**<br>公式バッチCLI/コンテナSDKが未提供のため安全側に倒して拒否（架空接続は禁止） |
 | **通信遮断型コンテナ隔離 & 成果物回収**<br>ネットワーク遮断Linuxコンテナでの実行と、パストラバーサルや保護パスを遮断した回収 | **完全自動マージ / 自動デプロイ**<br>すべてのマージや重要操作は人間の明示的レビュー・承認を必須とするガバナンス |
-| **独立検証器 (Independent Verifier)**<br>エージェントの自己申告テストログを排除し、差分から実測 `candidate_sha` を照合 | **暗黙のフォールバック**<br>障害や非対応時に自動で安全基準の低い実行モードへすり替える動作は禁止 (Fail-Closed) |
+| **独立検証器 (Independent Verifier)**<br>エージェントの自己申告テストログを排除し、差分から実測 `candidate_digest` を照合 | **暗黙のフォールバック**<br>障害や非対応時に自動で安全基準の低い実行モードへすり替える動作は禁止 (Fail-Closed) |
 | **本人認証付き承認 (Approval Token)**<br>HMAC-SHA256署名鍵とロール権限に基づく単回利用の暗号学的承認トークン管理 | **CLIによるワンライナー自律実行**<br>誤認防止のため単一の `run` / `ingest` CLIは提供せず、Python APIやテスト経由で制御 |
 | **2相コミット操作ジャーナル**<br>SQLiteトランザクションによるGitHub操作の重複防止とクラッシュ復旧照合 | |
 | **GitHub Ruleset ブランチ保護**<br>`main` ブランチへの直push / force push禁止、およびCI通過必須化の強制 | |
@@ -79,7 +79,7 @@ python -m orchestrator.cli status
 ```
 
 ### 3. 隔離コンテナ実行と独立検証 (Python API)
-ワーカー（Builder）による実装後、通信遮断コンテナ内でテストを実行し、自己申告ログを信用せずに成果物差分から実測 `candidate_sha` を独立検証します。`OfflineContainerRunner` はタグ付きイメージやフリーな `argv` を受け付けず、事前に登録された `sha256:` immutableイメージIDと `command_id` のみを実行します。
+ワーカー（Builder）による実装後、通信遮断コンテナ内でテストを実行し、自己申告ログを信用せずに成果物差分から実測 `candidate_digest` を独立検証します。`OfflineContainerRunner` はタグ付きイメージやフリーな `argv` を受け付けず、事前に登録された `sha256:` immutableイメージIDと `command_id` のみを実行します。
 ```python
 from orchestrator.core.container import ContainerCommand, OfflineContainerRunner
 from orchestrator.core.artifacts import ArtifactCollector
@@ -98,7 +98,7 @@ result = runner.run("pytest", extract_artifacts=True)
 collector = ArtifactCollector(allowed_paths=["orchestrator/"])
 artifacts = collector.collect(result.artifacts_dir, "/path/to/runtime-root/SMP-001/collected")
 
-# 3. 自己申告ログを排除し、成果物差分から実測 candidate_sha を計算・照合
+# 3. 自己申告ログを排除し、成果物差分から実測 candidate_digest を計算・照合
 verifier = IndependentVerifier()
 evidence = verifier.verify_candidate(
     task_id="SMP-001",
@@ -107,7 +107,7 @@ evidence = verifier.verify_candidate(
     execution_exit_code=result.exit_code,
     execution_output=result.output,
 )
-print(f"Verified candidate_sha: {evidence.candidate_sha}")
+print(f"Verified candidate_digest: {evidence.candidate_digest}")
 ```
 
 ### 4. マージ前の人手承認トークン発行 (CLI `approve`)
@@ -139,7 +139,7 @@ python -m orchestrator.cli approve \
 | **SoT (Source of Truth)** | リポジトリのGitコミットおよびPR履歴。エージェントの一時記憶ではなく、リポジトリこそが真実の情報源です。 |
 | **CAS (Compare-And-Swap)** | SQLite状態台帳の楽観的並行性制御。リビジョン番号を照合し、並列ワーカーによる競合や状態破壊を防ぎます。 |
 | **runtime-root** | リポジトリ外に配置される使い捨て実行領域。生ログ、PID、一時DBをGit管理外へ完全隔離します。 |
-| **Evidence Bundle** | テストログ、実行結果、成果物から計算された実測 `candidate_sha` を含む、改ざん不能な検証証跡。 |
+| **Evidence Bundle** | テストログ、実行結果、成果物から計算された実測 `candidate_digest` を含む、改ざん不能な検証証跡。 |
 | **Fail-Closed** | 異常、未認証、未検証項目に遭遇した際、例外をもみ消さずに「安全側に倒して即時拒絶（ブロック）」する設計思想。 |
 | **Worktree** | Gitの複数ブランチを別ディレクトリに同時チェックアウトする機能。タスクごとのコード隔離に使用します。 |
 | **Lease** | タスク実行権限の有効期限。タイムアウトやプロセス生存確認（PID監視）によりデッドロックを防止します。 |

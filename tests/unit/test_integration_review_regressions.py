@@ -131,7 +131,7 @@ class FixtureAdapter:
         return {"status": "SUCCESS"}
 
     def collect_results(self, run_id):
-        return {"status": "SUCCESS", "candidate_sha": "a" * 40}
+        return {"status": "SUCCESS", "candidate_digest": "a" * 40}
 
     def cancel_task(self, run_id):
         return True
