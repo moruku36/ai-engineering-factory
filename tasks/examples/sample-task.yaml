@@ -7,8 +7,9 @@ dependencies: []
 parallelizable: true
 role: "builder"
 repository: "https://github.com/moruku36/ai-engineering-factory"
-base_ref: "phase/p1-foundation"
+base_ref: "main"
 branch: "task/smp-001"
+
 worktree: "runtime-root/worktrees/smp-001"
 allowed_paths:
   - "orchestrator/"

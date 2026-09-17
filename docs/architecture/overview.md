@@ -1,6 +1,8 @@
 # Architecture Overview
 
-> **AI Engineering Factory: システムビジョンとコンポーネント構成**
+> **AI Engineering Factory: システムビジョンとコンポーネント構成**  
+> ※ 本システムの詳細な仕様・厳格な境界・状態遷移の正本はリポジトリ直下の [ARCHITECTURE.md](../../ARCHITECTURE.md) です。本ドキュメントはコンポーネント概要のサマリーです。
+
 
 ---
 
