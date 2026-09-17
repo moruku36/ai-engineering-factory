@@ -1,11 +1,10 @@
 # Contributing Guide
 
 ## 1. Branch Strategy
-- `main`: Intended protected integration branch. Direct pushes are forbidden by
-  project policy; server enforcement was unavailable at the 2026-09-16 review.
-  Do not assume branch protection is configured merely because this guide requires it.
+- `main`: Protected integration branch. Enforced by GitHub Ruleset (Pull Request required, CI checks required, non-fast-forward push blocked). Direct pushes and force pushes are strictly prohibited.
 - `phase/p<N>-<name>`: Integration branch for Phase N development.
-- `task/<id>`: Isolated branch for individual tasks (e.g., `task/fnd-001`).
+- `task/<id>`: Isolated branch for individual tasks (e.g., `task/smp-001`).
+
 
 ## 2. Commit Guidelines
 - Use conventional commit format prefixed with Task ID: `feat(FND-002): add schema validation engine`.
