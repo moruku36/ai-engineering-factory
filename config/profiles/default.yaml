@@ -5,6 +5,7 @@ allowed_commands:
   - "pytest"
   - "ruff"
   - "python"
+  - "python3"
   - "git"
 resource_limits:
   max_wall_seconds: 1800

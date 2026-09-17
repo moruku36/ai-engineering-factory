@@ -56,6 +56,7 @@ DEFAULT_ALLOWED_COMMANDS = {
     "pytest",
     "ruff",
     "python",
+    "python3",
     "git",
     "npm",
     "node",

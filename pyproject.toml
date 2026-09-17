@@ -24,6 +24,9 @@ Repository = "https://github.com/moruku36/ai-engineering-factory"
 Documentation = "https://github.com/moruku36/ai-engineering-factory#readme"
 Issues = "https://github.com/moruku36/ai-engineering-factory/issues"
 
+[tool.setuptools.packages.find]
+include = ["orchestrator*"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
