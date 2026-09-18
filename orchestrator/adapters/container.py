@@ -90,6 +90,8 @@ class ApprovedContainerAdapter(ExecutionAdapter):
             "repository", "head_sha", "target_ref", "policy_hash", "plan_hash",
         )}
         context.update(action="task_execution", task_id=task_id)
+        if "phase_contract" in manifest:
+            context["phase_contract"] = manifest["phase_contract"]
         context["argv_digest"] = _digest({
             "profile": "offline-linux-v1", "image": runner.image_id,
             "runtime_root": str(runner.root),
@@ -203,7 +205,7 @@ class ApprovedContainerAdapter(ExecutionAdapter):
                             report = result.artifacts_dir / "report.xml"
                             if report.is_file():
                                 junit_xml = report.read_text(encoding="utf-8", errors="replace")
-                        verifier = IndependentVerifier()
+                        verifier = IndependentVerifier(worktree_dir=worktree_dir)
                         measured = verifier.verify_candidate(
                             task_id=task_id,
                             base_sha=context["head_sha"],
@@ -212,6 +214,7 @@ class ApprovedContainerAdapter(ExecutionAdapter):
                             execution_output=result.output,
                             base_files=base_files,
                             junit_xml=junit_xml,
+                            phase_contract=context.get("phase_contract"),
                         )
                         candidate_digest = measured.candidate_digest
                         changed_paths = measured.changed_paths

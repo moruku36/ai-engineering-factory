@@ -4,6 +4,7 @@ Generates measured candidate digests from actual collected files, independently 
 test execution outputs, and invalidates review/approval evidence when candidate inputs mutate.
 """
 
+import fnmatch
 import hashlib
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -16,6 +17,10 @@ from orchestrator.core.artifacts import ArtifactCollectionResult
 
 class VerificationError(Exception):
     """Raised when evidence verification fails or evidence was tampered with."""
+
+
+class PhaseContractViolationError(VerificationError):
+    """Raised when candidate changes violate phase contract invariants or prohibited boundaries."""
 
 
 class EvidenceState(str, Enum):
@@ -161,6 +166,9 @@ class IndependentVerifier:
         builder_claimed_digest: str | None = None,
         base_files: dict[str, str] | None = None,
         junit_xml: str | None = None,
+        phase_contract: dict[str, Any] | None = None,
+        worktree_dir: Path | str | None = None,
+        file_contents: dict[str, str] | None = None,
     ) -> MeasuredEvidence:
         """Independently evaluate execution evidence, rejecting self-reported claims.
 
@@ -171,6 +179,7 @@ class IndependentVerifier:
         junit_xml: optional JUnit XML report text. When supplied, test pass/fail is
             determined from independently parsed structured counts instead of a string
             heuristic over raw output.
+        phase_contract: optional phase contract dictionary specifying preserves and prohibits.
         """
         if not base_sha or len(base_sha) != 40:
             raise VerificationError("Invalid base SHA: must be 40-character commit SHA")
@@ -206,6 +215,15 @@ class IndependentVerifier:
         if not test_passed:
             raise VerificationError(f"Independent test verification failed: {test_summary}")
 
+        if phase_contract:
+            self.verify_phase_contract(
+                phase_contract=phase_contract,
+                changed_paths=changed_paths,
+                worktree_dir=worktree_dir,
+                file_contents=file_contents,
+            )
+            metadata["phase_contract_verified"] = True
+
         return MeasuredEvidence(
             task_id=task_id,
             base_sha=base_sha,
@@ -217,6 +235,108 @@ class IndependentVerifier:
             state=EvidenceState.VALID,
             metadata=metadata,
         )
+
+    @staticmethod
+    def _path_matches_rules(path: str, patterns: list[str] | None) -> bool:
+        if not patterns:
+            return True
+        norm = path.replace("\\", "/").strip("/")
+        for pat in patterns:
+            clean_pat = pat.replace("\\", "/").strip("/")
+            if fnmatch.fnmatch(norm, clean_pat):
+                return True
+            clean_dir = clean_pat.rstrip("/")
+            if norm == clean_dir or norm.startswith(clean_dir + "/"):
+                return True
+        return False
+
+    def verify_phase_contract(
+        self,
+        phase_contract: dict[str, Any],
+        changed_paths: list[str],
+        worktree_dir: Path | str | None = None,
+        file_contents: dict[str, str] | None = None,
+    ) -> None:
+        """Independently enforce phase contract (preserves and prohibits invariants).
+
+        Fails closed with PhaseContractViolationError if future phase deliverables
+        or prohibited patterns are detected in changed paths, or if preserved invariants are broken.
+        """
+        if not phase_contract:
+            return
+
+        target_dir = Path(worktree_dir).resolve() if worktree_dir else self.worktree_dir
+        contents: dict[str, str] = dict(file_contents or {})
+
+        def _get_content(rel_p: str) -> str:
+            if rel_p in contents:
+                return contents[rel_p]
+            if target_dir:
+                f_path = target_dir / rel_p
+                if f_path.is_file():
+                    try:
+                        c = f_path.read_text(encoding="utf-8", errors="replace")
+                        contents[rel_p] = c
+                        return c
+                    except OSError:
+                        pass
+            return ""
+
+        # 1. Evaluate prohibits (future phase deliverables / forbidden patterns)
+        for rule in phase_contract.get("prohibits", []):
+            rule_id = rule.get("id", "PROH")
+            statement = rule.get("statement", "")
+            patterns = rule.get("patterns", [])
+            applies_to = rule.get("applies_to")
+            target_phase = rule.get("target_phase")
+
+            for path in changed_paths:
+                if not self._path_matches_rules(path, applies_to):
+                    continue
+                content = _get_content(path)
+                for pat in patterns:
+                    if pat and pat in content:
+                        phase_info = f" (target_phase: {target_phase})" if target_phase else ""
+                        raise PhaseContractViolationError(
+                            f"Phase contract violation in '{path}': prohibited pattern '{pat}' detected "
+                            f"(violates rule '{rule_id}': {statement}){phase_info}"
+                        )
+
+        # 2. Evaluate preserves (invariants that must be maintained at phase completion)
+        for rule in phase_contract.get("preserves", []):
+            rule_id = rule.get("id", "PRSV")
+            statement = rule.get("statement", "")
+            check_type = rule.get("check_type", "forbidden_pattern")
+            patterns = rule.get("patterns", [])
+            applies_to = rule.get("applies_to")
+
+            if check_type == "forbidden_pattern":
+                for path in changed_paths:
+                    if not self._path_matches_rules(path, applies_to):
+                        continue
+                    content = _get_content(path)
+                    for pat in patterns:
+                        if pat and pat in content:
+                            raise PhaseContractViolationError(
+                                f"Phase preservation invariant violated in '{path}': "
+                                f"forbidden pattern '{pat}' introduced (rule '{rule_id}': {statement})"
+                            )
+
+            elif check_type == "required_pattern":
+                for pat in patterns:
+                    found = False
+                    for path in changed_paths:
+                        if not self._path_matches_rules(path, applies_to):
+                            continue
+                        content = _get_content(path)
+                        if pat in content:
+                            found = True
+                            break
+                    if not found and changed_paths:
+                        raise PhaseContractViolationError(
+                            f"Phase preservation invariant violated: required pattern '{pat}' "
+                            f"not found in any applicable changed files (rule '{rule_id}': {statement})"
+                        )
 
     @staticmethod
     def invalidate_on_mutation(

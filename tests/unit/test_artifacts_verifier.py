@@ -312,3 +312,129 @@ def test_independent_verifier_invalidates_on_mutation(tmp_path):
     assert invalidated is not None
     assert invalidated.state == EvidenceState.INVALIDATED
     assert invalidated.candidate_digest != evidence1.candidate_digest
+
+
+def test_independent_verifier_enforces_phase_contract_prohibits(tmp_path):
+    """Ensure verifier rejects future-phase remediations preemptively added by an earlier phase worker."""
+    from orchestrator.core.verifier import PhaseContractViolationError
+
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    app_dir = worktree / "app"
+    app_dir.mkdir()
+    # Simulates Initial Builder sneaking Phase 3 HARDENED remediation into Phase 1
+    (app_dir / "main.py").write_text("LAB_MODE = 'HARDENED'\nadmin_authz_remediation = True", encoding="utf-8")
+
+    dst = tmp_path / "dst"
+    collector = ArtifactCollector(allowed_paths=["app/*"])
+    artifacts = collector.collect(worktree, dst)
+
+    phase_contract = {
+        "target_phase": 1,
+        "prohibits": [
+            {
+                "id": "PROH-01",
+                "statement": "Phase 3 security remediations must not be implemented in Phase 1",
+                "target_phase": 3,
+                "check_type": "forbidden_pattern",
+                "patterns": ["HARDENED", "admin_authz_remediation"],
+                "applies_to": ["app/"],
+            }
+        ],
+    }
+
+    verifier = IndependentVerifier(worktree_dir=worktree)
+    with pytest.raises(PhaseContractViolationError, match="prohibited pattern 'HARDENED' detected"):
+        verifier.verify_candidate(
+            task_id="TASK-P1",
+            base_sha="5" * 40,
+            artifacts=artifacts,
+            execution_exit_code=0,
+            execution_output="ok",
+            phase_contract=phase_contract,
+        )
+
+
+def test_independent_verifier_enforces_phase_contract_preserves(tmp_path):
+    """Ensure verifier rejects changes that remove required preservation invariants."""
+    from orchestrator.core.verifier import PhaseContractViolationError
+
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    (worktree / "config.py").write_text("vulnerable_flag = False", encoding="utf-8")
+
+    dst = tmp_path / "dst"
+    collector = ArtifactCollector()
+    artifacts = collector.collect(worktree, dst)
+
+    phase_contract = {
+        "target_phase": 1,
+        "preserves": [
+            {
+                "id": "PRSV-01",
+                "statement": "Intentional vulnerable flag must be preserved",
+                "check_type": "required_pattern",
+                "patterns": ["vulnerable_flag = True"],
+            }
+        ],
+    }
+
+    verifier = IndependentVerifier(worktree_dir=worktree)
+    with pytest.raises(PhaseContractViolationError, match="required pattern 'vulnerable_flag = True' not found"):
+        verifier.verify_candidate(
+            task_id="TASK-P1",
+            base_sha="6" * 40,
+            artifacts=artifacts,
+            execution_exit_code=0,
+            execution_output="ok",
+            phase_contract=phase_contract,
+        )
+
+
+def test_independent_verifier_passes_clean_phase_contract(tmp_path):
+    """Ensure clean candidate changes complying with phase contract are verified."""
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    app_dir = worktree / "app"
+    app_dir.mkdir()
+    (app_dir / "main.py").write_text("LAB_MODE = 'VULNERABLE'\nvulnerable_flag = True", encoding="utf-8")
+
+    dst = tmp_path / "dst"
+    collector = ArtifactCollector(allowed_paths=["app/*"])
+    artifacts = collector.collect(worktree, dst)
+
+    phase_contract = {
+        "target_phase": 1,
+        "preserves": [
+            {
+                "id": "PRSV-01",
+                "statement": "Vulnerable baseline preserved",
+                "check_type": "required_pattern",
+                "patterns": ["vulnerable_flag = True"],
+                "applies_to": ["app/"],
+            }
+        ],
+        "prohibits": [
+            {
+                "id": "PROH-01",
+                "statement": "Phase 3 security remediations must not be implemented in Phase 1",
+                "target_phase": 3,
+                "check_type": "forbidden_pattern",
+                "patterns": ["HARDENED"],
+                "applies_to": ["app/"],
+            }
+        ],
+    }
+
+    verifier = IndependentVerifier(worktree_dir=worktree)
+    evidence = verifier.verify_candidate(
+        task_id="TASK-P1",
+        base_sha="7" * 40,
+        artifacts=artifacts,
+        execution_exit_code=0,
+        execution_output="ok",
+        phase_contract=phase_contract,
+    )
+    assert evidence.state == EvidenceState.VALID
+    assert evidence.metadata.get("phase_contract_verified") is True
+
