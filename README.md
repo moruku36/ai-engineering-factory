@@ -9,6 +9,8 @@
 
 **⚡ 自分の環境で試す**: [15分クイックスタート (docs/getting-started.md)](docs/getting-started.md) — clone → `doctor` → `init` → サンプルタスク実行 → Evidence確認までの一本道シナリオです。
 
+**🧪 実戦Case Study**: [Web Security Control Lab — Phase Boundary / Human Merge Boundaryを実環境で検証](docs/case-studies/web-security-control-lab.md) — 実際のAgent分担が崩れた事例から、`phase_contract`・PR HEAD binding・Fail-ClosedなHuman Merge境界へ改善した経緯をまとめています。
+
 ### 環境ごとにできること
 
 | 環境 | CLI / 開発・テスト | Offline Container Isolation |
@@ -256,6 +258,7 @@ Automatic MergeやUnattended Production Deploymentは、このFactoryの目標�
 ## Documentation
 
 - [Getting Started (15分クイックスタート)](docs/getting-started.md)
+- [Case Study: Web Security Control Lab](docs/case-studies/web-security-control-lab.md) — Phase Boundary / Human Merge Boundaryの実戦検証
 - [Adapter Guide](docs/adapters/README.md) — Claude Code / Codex / 独自Adapterの繋ぎ方
 - [Architecture](ARCHITECTURE.md)
 - [Security Policy](SECURITY.md)
