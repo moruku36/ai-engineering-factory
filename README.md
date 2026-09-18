@@ -68,7 +68,7 @@ python -m orchestrator.cli status                               # タスク状�
 `demo` は非隔離のローカル実行（`ManualAdapter`）でタスク→検証→Evidenceの流れを素早く確認するためのものです。信頼できないコードには使わないでください。
 
 ### 3. 隔離コンテナ実行と独立検証 (Python API)
-未信頼な成果物に対しては、通信遮断コンテナ内でテストを実行し、自己申告ログを信用せずに実測 `candidate_digest`（64桁SHA-256）を独立検証します。`OfflineContainerRunner` はタグ付きイメージやフリーな `argv` を受け付けず、事前に登録された `sha256:` immutableイメージIDと `command_id` のみを実行し、Worktreeの読み取り専用スナップショットをマウントして `base_sha` との実差分を測定します。完全なコード例は [クイックスタート §6](docs/getting-started.md#6-the-real-isolation--verification-path) を参照してください。
+未信頼な成果物に対しては、通信遮断コンテナ内でテストを実行し、自己申告ログを信用せずに実測 `candidate_digest`（64桁SHA-256）を独立検証します。`OfflineContainerRunner` はタグ付きイメージやフリーな `argv` を受け付けず、事前に登録された `sha256:` immutableイメージIDと `command_id` のみを実行し、Worktreeの読み取り専用スナップショットをマウントして `base_sha` との実差分を測定します。完全なコード例は [クイックスタート §7](docs/getting-started.md#7-the-real-isolation--verification-path) を参照してください。
 
 ### 4. マージ前の人手承認トークン発行 (CLI `approve`)
 `approval.before_merge: true` のポリシーに基づき、人間オペレーターが署名鍵を用いて単回利用の承認トークンを発行します。

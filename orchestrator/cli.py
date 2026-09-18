@@ -50,6 +50,48 @@ DEFAULT_DEMO_ARGV = {
 }
 
 
+def _path_is_inside_git_repo(path: Path) -> bool:
+    """Check whether path (or its nearest existing ancestor) is inside a git work tree."""
+    probe = path
+    while not probe.exists():
+        parent = probe.parent
+        if parent == probe:
+            return False
+        probe = parent
+    result = subprocess.run(
+        ["git", "-C", str(probe), "rev-parse", "--is-inside-work-tree"],
+        capture_output=True, text=True, check=False,
+    )
+    return result.returncode == 0 and result.stdout.strip() == "true"
+
+
+def _add_to_git_exclude(repo_cwd: Path, entries: set[str]) -> bool:
+    """Append entries to the target repo's .git/info/exclude (never its tracked .gitignore)."""
+    git_dir_res = subprocess.run(
+        ["git", "-C", str(repo_cwd), "rev-parse", "--git-dir"],
+        capture_output=True, text=True, check=False,
+    )
+    if git_dir_res.returncode != 0:
+        return False
+
+    git_dir = Path(git_dir_res.stdout.strip())
+    if not git_dir.is_absolute():
+        git_dir = (repo_cwd / git_dir).resolve()
+    exclude_file = git_dir / "info" / "exclude"
+    exclude_file.parent.mkdir(parents=True, exist_ok=True)
+
+    existing_lines = (
+        exclude_file.read_text(encoding="utf-8").splitlines() if exclude_file.is_file() else []
+    )
+    missing = [e for e in sorted(entries) if e not in existing_lines]
+    if not missing:
+        return True
+    with open(exclude_file, "a", encoding="utf-8") as f:
+        for entry in missing:
+            f.write(entry + "\n")
+    return True
+
+
 def cmd_init(args: argparse.Namespace) -> int:
     """Bootstrap a local config and an isolated runtime root for a target repository."""
     import yaml
@@ -60,13 +102,19 @@ def cmd_init(args: argparse.Namespace) -> int:
         return 2
 
     runtime_root = (
-        Path(args.runtime_root).expanduser()
+        Path(args.runtime_root).expanduser().resolve()
         if args.runtime_root
         else Path.home() / ".ai-engineering-factory" / "runtime" / repository.replace("/", "__")
     )
+    if _path_is_inside_git_repo(runtime_root):
+        print(f"init blocked: --runtime-root ({runtime_root}) is inside a git repository. "
+              "Transient runtime state (worktrees, leases, logs, SQLite DBs) must stay "
+              "outside any repository's working tree; pick a path outside it.")
+        return 2
     for sub in ("worktrees", "logs", "leases"):
         (runtime_root / sub).mkdir(parents=True, exist_ok=True)
 
+    repo_cwd = Path.cwd()
     config_path = Path(args.config_path) if args.config_path else Path(".ai-factory") / "config.yaml"
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config = {
@@ -77,9 +125,24 @@ def cmd_init(args: argparse.Namespace) -> int:
     with open(config_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(config, f, sort_keys=False)
 
+    # Local, git-ignored config must never depend on the target repo's own tracked
+    # .gitignore (this may not be the Factory's own repo). Exclude via
+    # .git/info/exclude instead, which is per-clone and never committed.
+    try:
+        config_dir_rel = config_path.parent.resolve().relative_to(repo_cwd.resolve())
+        exclude_entries = {f"/{config_dir_rel.as_posix()}/"}
+    except ValueError:
+        exclude_entries = {".ai-factory/"}  # config_path lives outside cwd; best-effort fallback
+    excluded = _add_to_git_exclude(repo_cwd, exclude_entries)
+
     print(f"[*] Repository: {repository}")
-    print(f"[*] Runtime root (outside the git repo, holds transient state): {runtime_root}")
+    print(f"[*] Runtime root (outside any git repo, holds transient state): {runtime_root}")
     print(f"[*] Local config written: {config_path}")
+    if excluded:
+        print(f"[*] Added to {repo_cwd}/.git/info/exclude (never committed): {sorted(exclude_entries)}")
+    else:
+        print(f"[!] {repo_cwd} is not a git repository; add {sorted(exclude_entries)} to your "
+              "own ignore mechanism manually so the local config is never committed")
     print()
     print("Next steps:")
     print("  1. Copy tasks/templates/basic-task.yaml, fill in your task, and point")
@@ -91,9 +154,11 @@ def cmd_init(args: argparse.Namespace) -> int:
 
 def cmd_demo(args: argparse.Namespace) -> int:
     """Run one task through ManualAdapter end-to-end as a non-isolated local demo."""
+    import jsonschema
     import yaml
 
     from orchestrator.adapters.manual import ManualAdapter
+    from orchestrator.core.schema import validate_against_schema
 
     task_file = Path(args.task_file)
     if not task_file.is_file():
@@ -101,11 +166,21 @@ def cmd_demo(args: argparse.Namespace) -> int:
         return 2
     manifest = yaml.safe_load(task_file.read_text(encoding="utf-8"))
 
+    try:
+        validate_against_schema(manifest, "task.schema.json")
+    except jsonschema.ValidationError as e:
+        print(f"demo blocked: task manifest failed schema validation: {e}")
+        return 2
+
     worktree = str(Path(args.worktree or ".").resolve())
     print(f"=== Demo: task {manifest.get('id')} via ManualAdapter (worktree={worktree}) ===")
     print("[!] Local, non-isolated demo run for evaluation only. This is NOT the offline")
     print("    container boundary (OfflineContainerRunner) and must not be used on")
     print("    untrusted code; it exists to show the task -> validation -> evidence flow.")
+    print("[!] allowed_paths/prohibited_paths are NOT enforced by 'demo' (only schema-")
+    print("    validated above); path enforcement happens on the real isolation path")
+    print("    (OfflineContainerRunner + ApprovedContainerAdapter). Supported command_id")
+    print(f"    for 'demo': {sorted(DEFAULT_DEMO_ARGV)}.")
 
     adapter = ManualAdapter()
     run_id = adapter.start_task(manifest, worktree)

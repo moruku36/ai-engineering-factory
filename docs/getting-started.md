@@ -1,8 +1,8 @@
 # Getting Started
 
-This is the one-scenario walkthrough: clone the Factory, point it at your own
-repository, run a task end-to-end, and see the resulting evidence. It should
-take about 15 minutes.
+This is the one-scenario walkthrough: install the Factory once, then use it
+to run a task against **your own repository** end-to-end and see the
+resulting evidence. It should take about 15 minutes.
 
 If you want the "why" behind these steps, read the [README](../README.md)
 first. This page is only the "how".
@@ -13,10 +13,18 @@ first. This page is only the "how".
 > Linux, Windows, and — expected but not CI-verified — macOS. See the
 > [Compatibility Matrix](compatibility/matrix.md).
 
-## 1. Clone and install
+There are two separate directories in this walkthrough — don't confuse them:
+
+- **The Factory itself** — this repository, cloned once. It gives you the
+  `ai-factory` command.
+- **Your repository** — the project you actually want to run tasks against.
+  Everything from step 2 onward runs from *inside that repo*, not inside the
+  Factory's clone.
+
+## 1. Install the Factory
 
 ```bash
-git clone https://github.com/YOUR_GITHUB_OWNER/YOUR_REPOSITORY.git ai-engineering-factory
+git clone https://github.com/moruku36/ai-engineering-factory.git
 cd ai-engineering-factory
 
 python -m venv .venv
@@ -25,57 +33,78 @@ source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 ```
 
-This also installs a console script, `ai-factory`, equivalent to
-`python -m orchestrator.cli`. Both are used interchangeably below.
+This installs a console script, `ai-factory`, on your `PATH` (equivalent to
+`python -m orchestrator.cli` run from inside this clone — either works from
+here on, `ai-factory` is just shorter). Keep this directory around; you'll
+copy one template file out of it in step 4.
 
-## 2. Check your environment
+## 2. Switch to your own repository
 
-```bash
-python -m orchestrator.cli doctor
-```
-
-This checks Python, Git, GitHub branch protection (if `gh` is authenticated
-and a repository is detected), and the Antigravity native-runtime probe. A
-clean environment still exits with code `2` — that is expected, not a
-failure. It means **Execution Mode: MANUAL_ONLY**: every merge requires an
-explicit Human approval token, by design (see [Safety Model](../README.md#safety-model)).
-
-## 3. Point the Factory at your repository
+Everything from here runs from inside the repository you want to govern —
+not from inside the Factory's clone:
 
 ```bash
-python -m orchestrator.cli init --repository YOUR_GITHUB_OWNER/YOUR_REPOSITORY
+cd /path/to/YOUR_REPOSITORY
 ```
 
-`init` does two things:
+## 3. Check your environment
 
-- Creates a **runtime root** outside this git repository (default:
+```bash
+ai-factory doctor
+```
+
+This checks Python, Git, GitHub branch protection for *your* repo (if `gh`
+is authenticated; it auto-detects `owner/repo` from `git remote get-url
+origin` in the current directory), and the Antigravity native-runtime
+probe. A clean environment still exits with code `2` — that is expected,
+not a failure. It means **Execution Mode: MANUAL_ONLY**: every merge
+requires an explicit Human approval token, by design (see
+[Safety Model](../README.md#safety-model)).
+
+## 4. Point the Factory at your repository
+
+Still inside your own repository:
+
+```bash
+ai-factory init --repository YOUR_GITHUB_OWNER/YOUR_REPOSITORY
+```
+
+`init` does three things, all scoped to *your* repository (the current
+directory):
+
+- Creates a **runtime root** outside any git working tree (default:
   `~/.ai-engineering-factory/runtime/<owner>__<repo>/`) — transient state
   (worktrees, leases, logs, SQLite DBs) is never committed to your repo.
-- Writes a local config file at `.ai-factory/config.yaml` (already
-  git-ignored) recording your repository and runtime root.
+  `init` refuses a `--runtime-root` that resolves inside a git repository.
+- Writes a local config file at `.ai-factory/config.yaml` in your repo,
+  recording the repository and runtime root.
+- Adds `.ai-factory/` to your repo's `.git/info/exclude` (not its tracked
+  `.gitignore` — this stays local to your clone and is never committed, and
+  doesn't touch a file you didn't author).
 
-If you're running this inside the Factory's own repository as a demo, you
-can pass `--repository moruku36/ai-engineering-factory` (or omit
-`--repository`; it auto-detects from `git remote get-url origin` or
-`$GITHUB_REPOSITORY`).
+## 5. Write a task
 
-## 4. Write a task
-
-Copy the template and fill in the placeholders:
+Copy the template out of the Factory clone into your own repository:
 
 ```bash
-cp tasks/templates/basic-task.yaml tasks/examples/my-task.yaml
+mkdir -p tasks
+cp /path/to/ai-engineering-factory/tasks/templates/basic-task.yaml tasks/task-001.yaml
 ```
 
-Edit `tasks/examples/my-task.yaml`:
+Edit `tasks/task-001.yaml` (now inside *your* repo):
 
-- `repository`: the `https://github.com/...` URL for the repo you ran `init`
-  against.
+- `repository`: the `https://github.com/...` URL for the repo you ran
+  `init` against.
 - `allowed_paths` / `prohibited_paths`: the narrowest set of paths this task
-  is allowed to touch. This is enforced, not advisory.
+  is allowed to touch. This is enforced on the real isolation path (step 7);
+  `demo` (step 6) only schema-validates the manifest, it does not enforce
+  these paths — don't treat a passing `demo` run as proof a task respected
+  them.
 - `validation`: which command(s) must pass. `command_id` must be in the
-  allowed command registry (`pytest`, `ruff`, `python`, `git`, `npm`, `node`
-  by default — see `orchestrator/core/policy.py`).
+  `PolicyEngine` allowed command registry (`pytest`, `ruff`, `python`,
+  `python3`, `git`, `npm`, `node` — see `orchestrator/core/policy.py`), but
+  `ai-factory demo` (step 6) currently only has a built-in `argv` for
+  `pytest`; the others work on the real isolation path.
 - `output_artifacts`: files the task must produce for a run to count as
   `SUCCESS`.
 
@@ -84,32 +113,39 @@ You do not need a real AI agent to try this: for the demo step below, the
 it at (e.g. an existing branch, or a worktree you edited by hand or with any
 coding agent of your choice).
 
-## 5. Run it end-to-end (local demo)
+## 6. Run it end-to-end (local demo)
+
+Still inside your own repository:
 
 ```bash
-python -m orchestrator.cli demo --task-file tasks/examples/my-task.yaml --worktree .
+ai-factory demo --task-file tasks/task-001.yaml --worktree .
 ```
 
-This runs your task through `ManualAdapter`: it executes the validation
-command as a real subprocess (no `shell=True`, sandboxed environment, policy
-checked), then hashes the declared `output_artifacts` to produce evidence.
+This first validates the task manifest against `task.schema.json`, then runs
+it through `ManualAdapter`: executes the validation command as a real
+subprocess (no `shell=True`, sandboxed environment, `PolicyEngine`-checked),
+then hashes the declared `output_artifacts` to produce a result.
 
-**This demo path is intentionally not isolated** — it runs directly against
-the worktree you pass it, with no network/filesystem boundary. It exists to
-show the task → validation → evidence shape quickly. Do not point it at
-untrusted code. For the real isolation boundary, see step 6.
+**This demo path is intentionally not isolated, and does not enforce
+`allowed_paths`/`prohibited_paths`** — it runs directly against the
+worktree you pass it, with no network/filesystem boundary, and its
+`candidate_digest` is derived from the artifacts it measured but never
+independently re-verified against `base_sha`. It exists to show the task →
+validation → result shape quickly, not to produce Evidence-grade output. Do
+not point it at untrusted code. For the real isolation + verification
+boundary, see step 7.
 
 You should see something like:
 
 ```text
-=== Demo: task TASK-001 via ManualAdapter (worktree=/path/to/repo) ===
+=== Demo: task TASK-001 via ManualAdapter (worktree=/path/to/your/repo) ===
 [*] Executing validation step: pytest
     -> PASS (exit=0)
 === Result: SUCCESS ===
   artifact: reports/task-001-report.json -> 3f9a...c1
 ```
 
-## 6. The real isolation + verification path
+## 7. The real isolation + verification path
 
 Once the shape above makes sense, the production path replaces
 `ManualAdapter` with the offline container boundary and independent
@@ -160,13 +196,13 @@ consumption, worktree snapshot, verification) — see
 `tests/unit/test_approved_container_adapter.py` for a complete worked
 example including a real git worktree.
 
-## 7. Issue a merge approval token
+## 8. Issue a merge approval token
 
 If your task sets `approval.before_merge: true` (the template does), a
 Human operator issues a single-use, HMAC-signed token before merge:
 
 ```bash
-python -m orchestrator.cli approve \
+ai-factory approve \
   --action merge_pull_request \
   --repository YOUR_GITHUB_OWNER/YOUR_REPOSITORY \
   --task-id TASK-001 \
@@ -182,7 +218,7 @@ python -m orchestrator.cli approve \
 The token is stored in the SQLite approvals ledger and is consumed exactly
 once when the GitHub operation actually runs.
 
-## 8. Open the PR
+## 9. Open the PR
 
 The Factory does not push branches or open PRs for you — that transport is
 intentionally unimplemented (`GitHubStatePublisher.publish_branch` /
@@ -194,7 +230,7 @@ have produced evidence you trust, push the branch and open the PR yourself
 ## What's next
 
 - [Adapter Guide](adapters/README.md) — connect Claude Code, Codex, or your
-  own agent instead of hand-editing the worktree in step 4.
+  own agent instead of hand-editing the worktree in step 5.
 - [Architecture](../ARCHITECTURE.md) — full component and state-machine spec.
 - [Operations Guide](../OPERATIONS.md) — crash recovery, CLI reference, log
   locations.
