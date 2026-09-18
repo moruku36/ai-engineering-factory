@@ -248,7 +248,7 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["id", "statement"],
+            "required": ["id", "statement", "check_type", "patterns"],
             "properties": {
               "id": {
                 "type": "string"
@@ -260,13 +260,12 @@
                 "type": "string",
                 "enum": ["required_pattern", "forbidden_pattern"]
               },
-              "command_id": {
-                "type": "string"
-              },
               "patterns": {
                 "type": "array",
+                "minItems": 1,
                 "items": {
-                  "type": "string"
+                  "type": "string",
+                  "minLength": 1
                 }
               },
               "applies_to": {
@@ -283,7 +282,7 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["id", "statement"],
+            "required": ["id", "statement", "check_type", "patterns"],
             "properties": {
               "id": {
                 "type": "string"
@@ -301,8 +300,10 @@
               },
               "patterns": {
                 "type": "array",
+                "minItems": 1,
                 "items": {
-                  "type": "string"
+                  "type": "string",
+                  "minLength": 1
                 }
               },
               "applies_to": {

@@ -109,6 +109,7 @@ def test_verify_human_merge_detects_unmerged_state(publisher):
         res = publisher.verify_human_merge(
             10, expected_head_sha="c" * 40,
             approval_manager=mock_approvals, approval_token_id="tok-ok",
+            task_id="TASK-001", policy_hash="p" * 64, plan_hash="s" * 64,
         )
         assert res["merged"] is False
         assert res["state"] == "OPEN"
@@ -136,6 +137,7 @@ def test_verify_human_merge_rejects_sha_mismatch(publisher):
         publisher.verify_human_merge(
             11, expected_head_sha="expected" + "0" * 32,
             approval_manager=mock_approvals, approval_token_id="tok-ok",
+            task_id="TASK-001", policy_hash="p" * 64, plan_hash="s" * 64,
         )
 
 
@@ -164,6 +166,7 @@ def test_verify_human_merge_success(publisher):
         res = publisher.verify_human_merge(
             12, expected_head_sha=target_sha,
             approval_manager=mock_approvals, approval_token_id="tok-ok",
+            task_id="TASK-001", policy_hash="p" * 64, plan_hash="s" * 64,
         )
         assert res["merged"] is True
         assert res["state"] == "MERGED"
@@ -194,6 +197,7 @@ def test_verify_human_merge_rejects_bot_actor(publisher):
         publisher.verify_human_merge(
             13, expected_head_sha="2" * 40,
             approval_manager=mock_approvals, approval_token_id="tok-ok",
+            task_id="TASK-001", policy_hash="p" * 64, plan_hash="s" * 64,
         )
 
 
@@ -215,7 +219,17 @@ def test_verify_human_merge_validates_consumed_approval_token(publisher):
         publisher.verify_human_merge(
             14, expected_head_sha=target_sha,
             approval_manager=None, approval_token_id=None,
+            task_id="TASK-001", policy_hash="p" * 64, plan_hash="s" * 64,
         )
+
+    # Case 0b: missing or empty binding attributes fail closed
+    for empty_val in ("", None):
+        with pytest.raises(GitHubPRError, match="Complete approval binding attributes"):
+            publisher.verify_human_merge(
+                14, expected_head_sha=target_sha,
+                approval_manager=mock_approvals, approval_token_id="tok-1",
+                task_id=empty_val, policy_hash="p" * 64, plan_hash="s" * 64,
+            )
 
     # Case 1: unconsumed or invalid binding token
     mock_approvals.verify_consumed_token_binding.side_effect = ApprovalVerificationError(
@@ -232,6 +246,7 @@ def test_verify_human_merge_validates_consumed_approval_token(publisher):
         publisher.verify_human_merge(
             14, expected_head_sha=target_sha,
             approval_manager=mock_approvals, approval_token_id="tok-1",
+            task_id="TASK-001", policy_hash="p" * 64, plan_hash="s" * 64,
         )
 
     # Case 2: valid consumed token succeeds
@@ -246,9 +261,65 @@ def test_verify_human_merge_validates_consumed_approval_token(publisher):
         res = publisher.verify_human_merge(
             14, expected_head_sha=target_sha,
             approval_manager=mock_approvals, approval_token_id="tok-1",
+            task_id="TASK-001", policy_hash="p" * 64, plan_hash="s" * 64,
         )
         assert res["merged"] is True
         assert res["merged_by"] == "human-operator"
+
+
+def test_verify_human_merge_rejects_missing_or_empty_merged_by(publisher):
+    """mergedBy must be present and contain a valid non-empty human login."""
+    target_sha = "5" * 40
+    mock_approvals = MagicMock()
+    mock_approvals.verify_consumed_token_binding.return_value = {
+        "token_id": "tok-ok",
+        "action": "merge_pull_request",
+        "head_sha": target_sha,
+        "consumed": True,
+    }
+
+    # Case 1: mergedBy missing or None
+    for bad_merged_by in (None, {}):
+        pr_data = {
+            "number": 15,
+            "state": "MERGED",
+            "mergedAt": "2026-09-16T12:30:00Z",
+            "mergeCommit": {"oid": "6" * 40},
+            "headRefOid": target_sha,
+        }
+        if bad_merged_by is not None:
+            pr_data["mergedBy"] = bad_merged_by
+
+        mock_res = MagicMock(returncode=0, stdout=json.dumps(pr_data))
+        with patch("subprocess.run", return_value=mock_res), pytest.raises(
+            GitHubPRError, match="mergedBy information is missing or unavailable"
+        ):
+            publisher.verify_human_merge(
+                15, expected_head_sha=target_sha,
+                approval_manager=mock_approvals, approval_token_id="tok-ok",
+                task_id="TASK-001", policy_hash="p" * 64, plan_hash="s" * 64,
+            )
+
+    # Case 2: mergedBy actor is empty, whitespace, or 'None'
+    for bad_actor in ("", "   ", "None", "none"):
+        pr_data = {
+            "number": 15,
+            "state": "MERGED",
+            "mergedAt": "2026-09-16T12:30:00Z",
+            "mergeCommit": {"oid": "6" * 40},
+            "headRefOid": target_sha,
+            "mergedBy": {"login": bad_actor},
+        }
+
+        mock_res = MagicMock(returncode=0, stdout=json.dumps(pr_data))
+        with patch("subprocess.run", return_value=mock_res), pytest.raises(
+            GitHubPRError, match="mergedBy actor is empty or malformed"
+        ):
+            publisher.verify_human_merge(
+                15, expected_head_sha=target_sha,
+                approval_manager=mock_approvals, approval_token_id="tok-ok",
+                task_id="TASK-001", policy_hash="p" * 64, plan_hash="s" * 64,
+            )
 
 
 def test_attempt_automated_merge_blocked_by_hard_deny(publisher):

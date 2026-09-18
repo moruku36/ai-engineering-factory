@@ -343,16 +343,23 @@ class IndependentVerifier:
         for rule in phase_contract.get("prohibits", []):
             rule_id = rule.get("id", "PROH")
             statement = rule.get("statement", "")
-            check_type = rule.get("check_type", "forbidden_pattern")
-            patterns = rule.get("patterns", [])
-            applies_to = rule.get("applies_to")
-            target_phase = rule.get("target_phase")
-            phase_info = f" (target_phase: {target_phase})" if target_phase else ""
-
+            check_type = rule.get("check_type")
+            if not check_type:
+                raise PhaseContractViolationError(
+                    f"Phase contract rule '{rule_id}' is missing required check_type: {statement}"
+                )
             if check_type not in allowed_prohibits_check_types:
                 raise PhaseContractViolationError(
                     f"Unsupported prohibits check_type '{check_type}' in rule '{rule_id}': {statement}"
                 )
+            patterns = rule.get("patterns")
+            if not patterns or not isinstance(patterns, list) or any(not p for p in patterns):
+                raise PhaseContractViolationError(
+                    f"Phase contract rule '{rule_id}' has empty or invalid patterns: must specify non-empty patterns"
+                )
+            applies_to = rule.get("applies_to")
+            target_phase = rule.get("target_phase")
+            phase_info = f" (target_phase: {target_phase})" if target_phase else "" 
 
             if check_type in ("forbidden_pattern", "forbidden_symbol"):
                 for path in changed_paths:
@@ -385,14 +392,21 @@ class IndependentVerifier:
         for rule in phase_contract.get("preserves", []):
             rule_id = rule.get("id", "PRSV")
             statement = rule.get("statement", "")
-            check_type = rule.get("check_type", "forbidden_pattern")
-            patterns = rule.get("patterns", [])
-            applies_to = rule.get("applies_to")
-
+            check_type = rule.get("check_type")
+            if not check_type:
+                raise PhaseContractViolationError(
+                    f"Phase contract rule '{rule_id}' is missing required check_type: {statement}"
+                )
             if check_type not in allowed_preserves_check_types:
                 raise PhaseContractViolationError(
                     f"Unsupported preserves check_type '{check_type}' in rule '{rule_id}': {statement}"
                 )
+            patterns = rule.get("patterns")
+            if not patterns or not isinstance(patterns, list) or any(not p for p in patterns):
+                raise PhaseContractViolationError(
+                    f"Phase contract rule '{rule_id}' has empty or invalid patterns: must specify non-empty patterns"
+                )
+            applies_to = rule.get("applies_to")
 
             if check_type == "forbidden_pattern":
                 paths_to_check = set(changed_paths)

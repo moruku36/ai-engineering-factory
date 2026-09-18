@@ -402,10 +402,10 @@ class RealGitHubStatePublisher:
         expected_head_sha: str,
         approval_manager: Any,
         approval_token_id: str,
-        task_id: str | None = None,
+        task_id: str,
+        policy_hash: str,
+        plan_hash: str,
         target_ref: str = "refs/heads/main",
-        policy_hash: str | None = None,
-        plan_hash: str | None = None,
     ) -> dict[str, Any]:
         """Verify remote GitHub PR state for verified human merge with matching head SHA.
 
@@ -418,11 +418,16 @@ class RealGitHubStatePublisher:
 
         from orchestrator.core.approval import ApprovalVerificationError
         try:
+            if not task_id or not policy_hash or not plan_hash:
+                raise GitHubPRError(
+                    f"Complete approval binding attributes (task_id, policy_hash, plan_hash) are required "
+                    f"for verifying PR #{pr_number} merge"
+                )
             approval_manager.verify_consumed_token_binding(
                 token_id=approval_token_id,
                 action="merge_pull_request",
                 repository=self.repo_slug,
-                task_id=task_id or "",
+                task_id=task_id,
                 head_sha=expected_head_sha,
                 target_ref=target_ref,
                 policy_hash=policy_hash,
@@ -460,9 +465,18 @@ class RealGitHubStatePublisher:
                 f"Merged PR #{pr_number} head SHA '{head_oid}' differs from expected '{expected_head_sha}'"
             )
 
-        merged_by = data.get("mergedBy") or {}
+        merged_by = data.get("mergedBy")
+        if not merged_by:
+            raise GitHubPRError(
+                f"PR #{pr_number} mergedBy information is missing or unavailable: fail-closed on unverified merge actor"
+            )
         actor_login = merged_by.get("login", "") if isinstance(merged_by, dict) else str(merged_by)
-        if actor_login and (
+        actor_login = actor_login.strip()
+        if not actor_login or actor_login.lower() == "none":
+            raise GitHubPRError(
+                f"PR #{pr_number} mergedBy actor is empty or malformed: fail-closed on unverified merge actor"
+            )
+        if (
             actor_login.endswith("[bot]")
             or actor_login in ("github-actions", "dependabot", "coderabbitai")
         ):

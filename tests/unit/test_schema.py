@@ -280,3 +280,67 @@ def test_phase_contract_schema_valid_and_invalid():
 
 
 
+
+
+def test_phase_contract_schema_requires_check_type_and_non_empty_patterns():
+    """Verify phase_contract rules reject missing check_type, missing patterns, empty patterns, or empty pattern string."""
+    task_dict = parse_safe_yaml(VALID_TASK_YAML)
+
+    for field in ("preserves", "prohibits"):
+        # Missing check_type
+        bad_task = dict(task_dict)
+        bad_task["phase_contract"] = {
+            field: [
+                {
+                    "id": "RULE-01",
+                    "statement": "Missing check_type",
+                    "patterns": ["test"],
+                }
+            ]
+        }
+        with pytest.raises(jsonschema.ValidationError):
+            validate_against_schema(bad_task, "task.schema.json")
+
+        # Missing patterns
+        bad_task = dict(task_dict)
+        bad_task["phase_contract"] = {
+            field: [
+                {
+                    "id": "RULE-02",
+                    "statement": "Missing patterns",
+                    "check_type": "forbidden_pattern",
+                }
+            ]
+        }
+        with pytest.raises(jsonschema.ValidationError):
+            validate_against_schema(bad_task, "task.schema.json")
+
+        # Empty patterns list
+        bad_task = dict(task_dict)
+        bad_task["phase_contract"] = {
+            field: [
+                {
+                    "id": "RULE-03",
+                    "statement": "Empty patterns list",
+                    "check_type": "forbidden_pattern",
+                    "patterns": [],
+                }
+            ]
+        }
+        with pytest.raises(jsonschema.ValidationError):
+            validate_against_schema(bad_task, "task.schema.json")
+
+        # Empty pattern string
+        bad_task = dict(task_dict)
+        bad_task["phase_contract"] = {
+            field: [
+                {
+                    "id": "RULE-04",
+                    "statement": "Empty pattern string",
+                    "check_type": "forbidden_pattern",
+                    "patterns": [""],
+                }
+            ]
+        }
+        with pytest.raises(jsonschema.ValidationError):
+            validate_against_schema(bad_task, "task.schema.json")

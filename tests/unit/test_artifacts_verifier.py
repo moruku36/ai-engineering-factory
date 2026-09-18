@@ -9,6 +9,7 @@ from orchestrator.core.artifacts import (
 from orchestrator.core.verifier import (
     EvidenceState,
     IndependentVerifier,
+    PhaseContractViolationError,
     VerificationError,
 )
 
@@ -603,3 +604,70 @@ def test_independent_verifier_preserves_invariant_in_unchanged_file(tmp_path):
     )
     assert evidence.changed_paths == ["new_feature.py"]
     assert evidence.state == EvidenceState.VALID
+
+
+def test_independent_verifier_rejects_empty_or_missing_patterns_or_check_type_fail_closed(tmp_path):
+    """Runtime must fail closed if phase contract rules have missing check_type or empty patterns."""
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    (worktree / "test.py").write_text("print(1)\n", encoding="utf-8")
+
+    dst = tmp_path / "dst"
+    collector = ArtifactCollector()
+    artifacts = collector.collect(worktree, dst)
+    verifier = IndependentVerifier(worktree_dir=worktree)
+
+    # 1. Prohibits missing check_type
+    with pytest.raises(PhaseContractViolationError, match="missing required check_type"):
+        verifier.verify_candidate(
+            task_id="TASK-P1",
+            base_sha="1" * 40,
+            artifacts=artifacts,
+            execution_exit_code=0,
+            execution_output="ok",
+            phase_contract={"prohibits": [{"id": "P1", "statement": "no check_type", "patterns": ["x"]}]},
+        )
+
+    # 2. Prohibits empty patterns list
+    with pytest.raises(PhaseContractViolationError, match="empty or invalid patterns"):
+        verifier.verify_candidate(
+            task_id="TASK-P1",
+            base_sha="1" * 40,
+            artifacts=artifacts,
+            execution_exit_code=0,
+            execution_output="ok",
+            phase_contract={"prohibits": [{"id": "P2", "statement": "empty patterns", "check_type": "forbidden_pattern", "patterns": []}]},
+        )
+
+    # 3. Prohibits empty pattern string
+    with pytest.raises(PhaseContractViolationError, match="empty or invalid patterns"):
+        verifier.verify_candidate(
+            task_id="TASK-P1",
+            base_sha="1" * 40,
+            artifacts=artifacts,
+            execution_exit_code=0,
+            execution_output="ok",
+            phase_contract={"prohibits": [{"id": "P3", "statement": "empty string", "check_type": "forbidden_pattern", "patterns": [""]}]},
+        )
+
+    # 4. Preserves missing check_type
+    with pytest.raises(PhaseContractViolationError, match="missing required check_type"):
+        verifier.verify_candidate(
+            task_id="TASK-P1",
+            base_sha="1" * 40,
+            artifacts=artifacts,
+            execution_exit_code=0,
+            execution_output="ok",
+            phase_contract={"preserves": [{"id": "R1", "statement": "no check_type", "patterns": ["x"]}]},
+        )
+
+    # 5. Preserves empty patterns
+    with pytest.raises(PhaseContractViolationError, match="empty or invalid patterns"):
+        verifier.verify_candidate(
+            task_id="TASK-P1",
+            base_sha="1" * 40,
+            artifacts=artifacts,
+            execution_exit_code=0,
+            execution_output="ok",
+            phase_contract={"preserves": [{"id": "R2", "statement": "empty patterns", "check_type": "required_pattern", "patterns": []}]},
+        )

@@ -268,11 +268,48 @@ def test_neg_human_merge_boundary_bot_and_unapproved_fail_closed(tmp_path):
 
     # 2a. Omitted approval info fails closed (no bypass knobs exist on security path)
     with pytest.raises(GitHubPRError, match="Human approval token is mandatory"):
-        publisher.verify_human_merge(10, expected_head_sha="b" * 40, approval_manager=None, approval_token_id=None)
+        publisher.verify_human_merge(
+            10,
+            expected_head_sha="b" * 40,
+            approval_manager=None,
+            approval_token_id=None,
+            task_id="TASK-001",
+            policy_hash="p" * 64,
+            plan_hash="s" * 64,
+        )
 
     # 2b. When valid approval provided, automated bot merge is strictly rejected
     mock_approvals = MagicMock()
     mock_approvals.verify_consumed_token_binding.return_value = {"token_id": "tok-valid", "consumed": True}
     with patch("subprocess.run", side_effect=mock_sub), pytest.raises(GitHubPRError, match="merged by automated bot 'github-actions\\[bot\\]'"):
-        publisher.verify_human_merge(10, expected_head_sha="b" * 40, approval_manager=mock_approvals, approval_token_id="tok-valid")
+        publisher.verify_human_merge(
+            10,
+            expected_head_sha="b" * 40,
+            approval_manager=mock_approvals,
+            approval_token_id="tok-valid",
+            task_id="TASK-001",
+            policy_hash="p" * 64,
+            plan_hash="s" * 64,
+        )
+
+    # 2c. Missing or malformed mergedBy fails closed on unverified merge actor
+    unverified_json = json.dumps({
+        "number": 10,
+        "state": "MERGED",
+        "mergedAt": "2026-09-18T12:00:00Z",
+        "mergeCommit": {"oid": "a" * 40},
+        "headRefOid": "b" * 40,
+    })
+    with patch("subprocess.run", return_value=MagicMock(returncode=0, stdout=unverified_json)), pytest.raises(
+        GitHubPRError, match="mergedBy information is missing or unavailable"
+    ):
+        publisher.verify_human_merge(
+            10,
+            expected_head_sha="b" * 40,
+            approval_manager=mock_approvals,
+            approval_token_id="tok-valid",
+            task_id="TASK-001",
+            policy_hash="p" * 64,
+            plan_hash="s" * 64,
+        )
 
