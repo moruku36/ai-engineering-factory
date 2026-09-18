@@ -1,7 +1,12 @@
 """Offline Linux command boundary, callable only by a trusted control process.
 
 This is not a native Antigravity adapter or a Human approval service.
-No host workspace, Docker socket, credentials or control state is worker-mounted.
+No live host workspace, Docker socket, credentials or control state is
+worker-mounted. A caller may optionally supply a pre-sanitized, read-only
+snapshot directory (see orchestrator.core.worktree.snapshot_worktree) to be
+bind-mounted read-only at /workspace, so that test verification runs against
+the task's real source tree rather than an always-empty scratch directory;
+this mount is never writable and is never the live worktree path itself.
 """
 
 import json
@@ -148,10 +153,28 @@ class OfflineContainerRunner:
             shutil.rmtree(inputs)
 
     def run(self, command_id: str, inputs: dict[str, bytes] | None = None,
-            *, run_id: str | None = None, extract_artifacts: bool = False) -> ContainerResult:
-        """Run exact registered argv with an explicit, bounded flat input snapshot."""
+            *, run_id: str | None = None, extract_artifacts: bool = False,
+            workspace_mount: Path | str | None = None) -> ContainerResult:
+        """Run exact registered argv with an explicit, bounded flat input snapshot.
+
+        workspace_mount, when given, must be a pre-sanitized, read-only snapshot
+        directory (e.g. from orchestrator.core.worktree.snapshot_worktree) that is
+        bind-mounted read-only at /workspace instead of the default empty tmpfs
+        scratch area. This lets a registered command (e.g. a pytest invocation)
+        actually see the task's real source tree. Because /workspace is then
+        read-only, a writable /out tmpfs is mounted for any generated reports
+        (e.g. --junitxml=/out/report.xml); when workspace_mount is supplied,
+        extract_artifacts collects from /out instead of /workspace.
+        """
         if command_id not in self.commands:
             raise ValueError("Unregistered container command")
+        workspace_path = None
+        if workspace_mount is not None:
+            workspace_path = Path(workspace_mount).resolve()
+            if not workspace_path.is_dir():
+                raise ValueError("workspace_mount must be an existing directory")
+            if any(char in str(workspace_path) for char in (",", "\n", "\r")):
+                raise ValueError("Workspace mount path contains unsupported mount syntax")
         inputs = dict(inputs or {})
         if len(inputs) > 100 or any(
             not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,99}", name)
@@ -183,6 +206,20 @@ class OfflineContainerRunner:
                   "owner": uuid.uuid4().hex, "image_id": self.image_id,
                   "command_id": command_id, "cleanup": "PENDING"}
         self._save(record)  # Journal intent before the first external mutation.
+        if workspace_path is not None:
+            workspace_mount_args = [
+                "--mount", (
+                    f"type=bind,src={workspace_path},dst=/workspace,"
+                    "readonly,noexec,nosuid,nodev,bind-recursive=disabled"
+                ),
+                "--tmpfs=/out:rw,nosuid,nodev,noexec,size=64m,mode=1777",
+            ]
+            artifact_source = "/out/."
+        else:
+            workspace_mount_args = [
+                "--tmpfs=/workspace:rw,nosuid,nodev,noexec,size=32m,mode=1777",
+            ]
+            artifact_source = "/workspace/."
         try:
             identity = self._call(
                 "create", "--pull=never", "--name", record["name"],
@@ -193,7 +230,7 @@ class OfflineContainerRunner:
                 "--memory-swap=256m", "--cpus=1", "--ulimit=nofile=128:128",
                 "--restart=no", "--no-healthcheck", "--log-driver=local",
                 "--log-opt=max-size=1m", "--log-opt=max-file=1", "--log-opt=compress=false",
-                "--tmpfs=/workspace:rw,nosuid,nodev,noexec,size=32m,mode=1777",
+                *workspace_mount_args,
                 "--tmpfs=/tmp:rw,nosuid,nodev,noexec,size=16m,mode=1777",
                 "--mount", f"type=bind,src={snapshot},dst=/inputs,readonly,bind-recursive=disabled",
                 "--workdir=/workspace", "--env=HOME=/tmp",
@@ -216,7 +253,7 @@ class OfflineContainerRunner:
                 artifacts_dir = directory / "artifacts"
                 artifacts_dir.mkdir(parents=True, exist_ok=True)
                 try:
-                    self._call("cp", f"{identity}:/workspace/.", str(artifacts_dir))
+                    self._call("cp", f"{identity}:{artifact_source}", str(artifacts_dir))
                 except ContainerBoundaryError:
                     pass
             self._save(record)

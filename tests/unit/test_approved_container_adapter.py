@@ -1,5 +1,6 @@
 """Admission uses real approval/SQLite primitives; Docker is mocked in unit tests."""
 
+import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from unittest.mock import Mock
@@ -190,3 +191,61 @@ def test_input_snapshot_cannot_change_during_approval_consumption(tmp_path):
     adapter.approvals.verify_and_consume_token = mutate_after_verification
     adapter.start_task(task, task["worktree"])
     assert adapter.runner.run.call_args.args[1]["probe.py"] == b"print('ok')"
+
+
+def test_start_task_verifies_real_worktree_diff_and_junit_report(tmp_path):
+    """Regression test: previously the container's /workspace was always an empty
+    tmpfs, so verify_candidate ran against nothing. This proves start_task now
+    mounts a real snapshot of the (already builder-edited) worktree, computes a
+    genuine diff against base_sha, and uses an independently-parsed JUnit report.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(["git", "-C", str(repo), "config", "user.email", "t@example.com"], check=True)
+    subprocess.run(["git", "-C", str(repo), "config", "user.name", "t"], check=True)
+    (repo / "src").mkdir()
+    (repo / "src" / "a.py").write_text("base", encoding="utf-8")
+    (repo / "src" / "b.py").write_text("unchanged", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-q", "-m", "base"], check=True)
+    base_sha = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    # Simulate the builder having already edited the worktree before verification.
+    (repo / "src" / "a.py").write_text("changed by agent", encoding="utf-8")
+
+    task = {"id": "TASK-201", "worktree": str(repo), "dependencies": [], "allowed_paths": ["src/"]}
+    runner = OfflineContainerRunner(tmp_path / "workers", "sha256:" + "a" * 64, {
+        "probe": ContainerCommand(("/usr/local/bin/python", "/inputs/probe.py"), 2),
+    })
+
+    def fake_run(_cmd, _inputs, run_id, workspace_mount=None):
+        assert workspace_mount is not None, "adapter must pass a real workspace snapshot"
+        artifacts_dir = tmp_path / "fake-artifacts" / run_id
+        artifacts_dir.mkdir(parents=True)
+        (artifacts_dir / "report.xml").write_text(
+            '<testsuite tests="1" failures="0" errors="0" skipped="0"></testsuite>', encoding="utf-8",
+        )
+        return ContainerResult(run_id, 0, "1 passed", artifacts_dir)
+
+    runner.run = Mock(side_effect=fake_run)
+    approvals = ApprovalManager(tmp_path / "approvals")
+    plans = {task["id"]: {
+        "repository": "example/factory", "head_sha": base_sha, "target_ref": "task/diff",
+        "policy_hash": "b" * 64, "plan_hash": "a" * 64, "command_id": "probe",
+        "inputs": {"probe.py": b"print('ok')"},
+    }}
+    adapter = ApprovedContainerAdapter(runner, approvals, plans, {}, tmp_path / "adapter")
+    token = adapter.approvals.issue_token(
+        **adapter.approval_context(task, task["worktree"]), approved_by="fixture-only",
+        expires_at=(datetime.now(UTC) + timedelta(minutes=5)).isoformat(),
+    )
+    adapter.tokens[task["id"]] = token["token_id"]
+
+    run_id = adapter.start_task(task, task["worktree"])
+    result = adapter.collect_results(run_id)
+
+    assert result["status"] == "SUCCESS"
+    assert result["changed_paths"] == ["src/a.py"]  # not src/b.py: it never changed
+    assert len(result["candidate_digest"]) == 64
