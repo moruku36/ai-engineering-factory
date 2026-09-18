@@ -1,0 +1,60 @@
+# Same as basic-task.yaml, but shows how to require a specific produced file
+# (output_artifacts). Unlike basic-task.yaml, this will FAIL 'demo' on a
+# fresh checkout unless your validation command actually creates the file
+# below — that's the point: it demonstrates artifact-hash verification, not
+# just "the command exited 0".
+schema_version: "2020-12"
+id: "TASK-002"
+title: "Describe the change in one line"
+description: "One paragraph: what should change and why."
+phase: 1
+dependencies: []
+parallelizable: true
+role: "builder"
+
+# Replace with your own repository, e.g. "https://github.com/YOUR_ORG/YOUR_REPO"
+# ('python -m orchestrator.cli init --repository owner/repo' prints the value to use here).
+repository: "https://github.com/YOUR_GITHUB_OWNER/YOUR_REPOSITORY"
+base_ref: "main"
+branch: "task/task-002"
+
+worktree: "runtime-root/worktrees/task-002"
+allowed_paths:
+  - "src/"                        # only these paths may be touched; keep this narrow
+prohibited_paths:
+  - ".github/"
+  - "schemas/"
+
+validation:
+  # Your validation command must itself produce reports/task-002-report.json
+  # (e.g. `pytest --json-report --json-report-file=reports/task-002-report.json`,
+  # or a wrapper script) for this task to reach SUCCESS with output_artifacts set.
+  - command_id: "pytest"
+    timeout_seconds: 300
+
+completion_criteria:
+  - id: "CC-1"
+    statement: "All unit tests pass and produce a machine-readable report"
+    evidence_type: "test_run"
+
+risk: "low"
+approval:
+  before_execution: false
+  before_merge: true
+
+output_artifacts:
+  - kind: "test_summary"
+    path: "reports/task-002-report.json"
+    classification: "internal"
+
+resources:
+  ports: []
+  test_db: false
+  exclusive_keys: []
+permissions:
+  - "default"
+retry:
+  max_attempts: 3
+  timeout_minutes: 30
+status: "PROPOSED"
+state_ref: "state/tasks/TASK-002.json"

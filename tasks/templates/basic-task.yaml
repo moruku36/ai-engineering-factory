@@ -34,10 +34,12 @@ approval:
   before_execution: false         # require a Human approval token before the worker runs
   before_merge: true              # require a Human approval token before merging the PR
 
-output_artifacts:
-  - kind: "test_summary"
-    path: "reports/task-001-report.json"
-    classification: "internal"
+# Empty by default: a fresh checkout of your repo won't have any of these
+# files yet, so requiring one here would make the first 'demo' run FAIL for
+# no reason. Once validation passes and you want to require your own task
+# to produce a specific file, add entries here (see
+# tasks/templates/example-artifact-task.yaml for a worked example).
+output_artifacts: []
 
 resources:
   ports: []

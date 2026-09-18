@@ -104,9 +104,16 @@ Edit `tasks/task-001.yaml` (now inside *your* repo):
   `PolicyEngine` allowed command registry (`pytest`, `ruff`, `python`,
   `python3`, `git`, `npm`, `node` — see `orchestrator/core/policy.py`), but
   `ai-factory demo` (step 6) currently only has a built-in `argv` for
-  `pytest`; the others work on the real isolation path.
+  `pytest`, run as `python -m pytest -q` against your repo's normal test
+  discovery; the others work on the real isolation path.
 - `output_artifacts`: files the task must produce for a run to count as
-  `SUCCESS`.
+  `SUCCESS`. `basic-task.yaml` leaves this `[]` on purpose — a fresh
+  checkout of your repo won't have a pre-existing report file, so requiring
+  one would make your very first `demo` run fail for no reason. Once you
+  want to verify a command actually produced a specific file, see
+  [`tasks/templates/example-artifact-task.yaml`](../tasks/templates/example-artifact-task.yaml)
+  for a worked example (and make sure your validation command actually
+  writes that file, e.g. `pytest --json-report --json-report-file=...`).
 
 You do not need a real AI agent to try this: for the demo step below, the
 "builder" work is just whatever is already on disk in the worktree you point

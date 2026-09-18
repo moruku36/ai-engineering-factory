@@ -46,7 +46,7 @@ def _detect_github_repository() -> str | None:
 
 
 DEFAULT_DEMO_ARGV = {
-    "pytest": [sys.executable, "-m", "pytest", "tests/unit/", "-q"],
+    "pytest": [sys.executable, "-m", "pytest", "-q"],
 }
 
 
@@ -155,16 +155,21 @@ def cmd_init(args: argparse.Namespace) -> int:
 def cmd_demo(args: argparse.Namespace) -> int:
     """Run one task through ManualAdapter end-to-end as a non-isolated local demo."""
     import jsonschema
-    import yaml
+
+    import yaml as pyyaml
 
     from orchestrator.adapters.manual import ManualAdapter
-    from orchestrator.core.schema import validate_against_schema
+    from orchestrator.core.schema import parse_safe_yaml, validate_against_schema
 
     task_file = Path(args.task_file)
     if not task_file.is_file():
         print(f"demo blocked: task file not found: {task_file}")
         return 2
-    manifest = yaml.safe_load(task_file.read_text(encoding="utf-8"))
+    try:
+        manifest = parse_safe_yaml(task_file.read_text(encoding="utf-8"))
+    except (TypeError, ValueError, pyyaml.YAMLError) as e:
+        print(f"demo blocked: task file failed safe YAML parsing: {e}")
+        return 2
 
     try:
         validate_against_schema(manifest, "task.schema.json")
@@ -202,6 +207,7 @@ def cmd_demo(args: argparse.Namespace) -> int:
         return 1
 
     print(f"=== Result: {results['status']} ===")
+    print(f"  candidate_digest: {results['candidate_digest']}")
     for path, digest in results["artifact_hashes"].items():
         print(f"  artifact: {path} -> {digest}")
     print("This is a local demo, not signed Evidence: real runs go through")
