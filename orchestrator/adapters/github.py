@@ -365,10 +365,35 @@ class RealGitHubStatePublisher:
         pr_number: int,
         expected_head_sha: str,
         require_human_actor: bool = True,
+        require_approval: bool = True,
         approval_manager: Any | None = None,
         approval_token_id: str | None = None,
+        task_id: str | None = None,
+        target_ref: str = "refs/heads/main",
+        policy_hash: str | None = None,
+        plan_hash: str | None = None,
     ) -> dict[str, Any]:
         """Verify remote GitHub PR state for verified human merge with matching head SHA."""
+        if require_approval:
+            if not approval_manager or not approval_token_id:
+                raise GitHubPRError(
+                    f"Human approval token is mandatory for verifying PR #{pr_number} merge, but approval data was omitted"
+                )
+            from orchestrator.core.approval import ApprovalVerificationError
+            try:
+                approval_manager.verify_consumed_token_binding(
+                    token_id=approval_token_id,
+                    action="merge_pull_request",
+                    repository=self.repo_slug,
+                    task_id=task_id or "",
+                    head_sha=expected_head_sha,
+                    target_ref=target_ref,
+                    policy_hash=policy_hash,
+                    plan_hash=plan_hash,
+                )
+            except ApprovalVerificationError as exc:
+                raise GitHubPRError(f"Approval token verification failed for PR #{pr_number} merge: {exc}") from exc
+
         cmd = [
             "gh", "pr", "view", str(pr_number),
             "--repo", self.repo_slug,
@@ -407,17 +432,6 @@ class RealGitHubStatePublisher:
             raise GitHubPRError(
                 f"PR #{pr_number} was merged by automated bot '{actor_login}', not a verified human operator"
             )
-
-        if approval_manager and approval_token_id:
-            token_rec = approval_manager.get_token(approval_token_id)
-            if not token_rec:
-                raise GitHubPRError(f"Approval token '{approval_token_id}' not found in registry")
-            if token_rec["action"] != "merge_pull_request":
-                raise GitHubPRError(f"Approval token action '{token_rec['action']}' is not 'merge_pull_request'")
-            if token_rec["head_sha"] != expected_head_sha:
-                raise GitHubPRError("Approval token head_sha does not match merged PR head SHA")
-            if not token_rec.get("consumed"):
-                raise GitHubPRError(f"Approval token '{approval_token_id}' has not been consumed yet")
 
         merge_commit = data.get("mergeCommit", {})
         oid = merge_commit.get("oid") if isinstance(merge_commit, dict) else merge_commit

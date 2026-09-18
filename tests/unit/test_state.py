@@ -131,8 +131,12 @@ def test_base_change_invalidates_candidate(ledger):
     assert state["candidate_digest"] is None  # Candidate invalidated!
 
 
-def test_transition_to_done_requires_human_approval(ledger):
+def test_transition_to_done_requires_human_approval(ledger, monkeypatch, tmp_path):
+    from orchestrator.core.approval import ApprovalManager
     from orchestrator.core.policy import ApprovalRequiredError
+
+    monkeypatch.setenv("AI_FACTORY_APPROVAL_SECRET", "01234567890123456789012345678901")
+    mgr = ApprovalManager(approvals_dir=tmp_path / "approvals")
 
     task_id = "TASK-007"
     ledger.initialize_task(task_id, SAMPLE_SPEC_DIGEST, SAMPLE_POLICY_DIGEST, SAMPLE_BASE_SHA)
@@ -142,14 +146,104 @@ def test_transition_to_done_requires_human_approval(ledger):
     ledger.transition(task_id, 3, TaskStatus.REVIEW, "Review")
     ledger.transition(task_id, 4, TaskStatus.READY_FOR_MERGE, "Ready for merge")
 
-    # Fail closed when human approval is required but token is missing
+    # 1. Fail closed when human approval is required but token is missing
     with pytest.raises(ApprovalRequiredError, match="human approval token is required before merge"):
         ledger.transition(task_id, 5, TaskStatus.DONE, "Attempted merge", requires_human_approval=True)
 
-    # Succeeds when valid approval token id is provided
+    # 2. Fail closed when approval_manager is omitted
+    with pytest.raises(ApprovalRequiredError, match="approval_manager is required to verify token"):
+        ledger.transition(
+            task_id, 5, TaskStatus.DONE, "Attempted merge",
+            requires_human_approval=True, approval_token_id="tok-fabricated-123",
+        )
+
+    # 3. Fabricated token ID -> rejected
+    with pytest.raises(ApprovalRequiredError, match="approval token verification failed"):
+        ledger.transition(
+            task_id, 5, TaskStatus.DONE, "Attempted merge",
+            requires_human_approval=True, approval_token_id="tok-fabricated-123",
+            approval_manager=mgr, repository="moruku36/ai-engineering-factory",
+        )
+
+    # Issue real token
+    tok = mgr.issue_token(
+        action="merge_pull_request",
+        repository="moruku36/ai-engineering-factory",
+        task_id=task_id,
+        head_sha=SAMPLE_BASE_SHA,
+        target_ref="refs/heads/main",
+        argv_digest="0" * 64,
+        policy_hash=SAMPLE_POLICY_DIGEST,
+        plan_hash=SAMPLE_SPEC_DIGEST,
+        approved_by="human-operator",
+        expires_at="2099-01-01T00:00:00Z",
+    )
+    tok_id = tok["token_id"]
+
+    # 4. Existing but unconsumed token -> rejected
+    with pytest.raises(ApprovalRequiredError, match="has not been consumed yet"):
+        ledger.transition(
+            task_id, 5, TaskStatus.DONE, "Attempted merge",
+            requires_human_approval=True, approval_token_id=tok_id,
+            approval_manager=mgr, repository="moruku36/ai-engineering-factory",
+        )
+
+    # 5. Revoked token -> rejected
+    mgr.revoke_token(tok_id, reason="Revoked before consume")
+    with pytest.raises(ApprovalRequiredError, match="has been revoked"):
+        ledger.transition(
+            task_id, 5, TaskStatus.DONE, "Attempted merge",
+            requires_human_approval=True, approval_token_id=tok_id,
+            approval_manager=mgr, repository="moruku36/ai-engineering-factory",
+        )
+
+    # Issue another token and consume it
+    tok2 = mgr.issue_token(
+        action="merge_pull_request",
+        repository="moruku36/ai-engineering-factory",
+        task_id=task_id,
+        head_sha=SAMPLE_BASE_SHA,
+        target_ref="refs/heads/main",
+        argv_digest="0" * 64,
+        policy_hash=SAMPLE_POLICY_DIGEST,
+        plan_hash=SAMPLE_SPEC_DIGEST,
+        approved_by="human-operator",
+        expires_at="2099-01-01T00:00:00Z",
+    )
+    tok2_id = tok2["token_id"]
+    mgr.verify_and_consume_token(
+        token_id=tok2_id,
+        action="merge_pull_request",
+        repository="moruku36/ai-engineering-factory",
+        task_id=task_id,
+        head_sha=SAMPLE_BASE_SHA,
+        target_ref="refs/heads/main",
+        argv_digest="0" * 64,
+        policy_hash=SAMPLE_POLICY_DIGEST,
+        plan_hash=SAMPLE_SPEC_DIGEST,
+    )
+
+    # 6. Mismatched repo/task/head SHA -> rejected
+    with pytest.raises(ApprovalRequiredError, match="Token binding mismatch on 'repository'"):
+        ledger.transition(
+            task_id, 5, TaskStatus.DONE, "Attempted merge",
+            requires_human_approval=True, approval_token_id=tok2_id,
+            approval_manager=mgr, repository="wrong-org/wrong-repo",
+        )
+
+    with pytest.raises(ApprovalRequiredError, match="Token binding mismatch on 'head_sha'"):
+        ledger.transition(
+            task_id, 5, TaskStatus.DONE, "Attempted merge",
+            requires_human_approval=True, approval_token_id=tok2_id,
+            approval_manager=mgr, repository="moruku36/ai-engineering-factory",
+            base_sha="f" * 40,
+        )
+
+    # 7. Valid consumed token with all bindings matching -> succeeds
     done_state = ledger.transition(
         task_id, 5, TaskStatus.DONE, "Human verified merge",
-        requires_human_approval=True, approval_token_id="tok-approved-123",
+        requires_human_approval=True, approval_token_id=tok2_id,
+        approval_manager=mgr, repository="moruku36/ai-engineering-factory",
     )
     assert done_state["status"] == TaskStatus.DONE.value
 

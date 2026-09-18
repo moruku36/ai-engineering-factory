@@ -191,6 +191,11 @@ class StateLedger:
         base_sha: str | None = None,
         approval_token_id: str | None = None,
         requires_human_approval: bool = False,
+        approval_manager: Any | None = None,
+        repository: str | None = None,
+        target_ref: str = "refs/heads/main",
+        policy_hash: str | None = None,
+        plan_hash: str | None = None,
     ) -> dict[str, Any]:
         """Atomically transition task state with cross-process CAS check."""
         with self._global_thread_lock:
@@ -233,12 +238,37 @@ class StateLedger:
                         f"Invalid transition for task {task_id}: {current_status.value} -> {to_status.value}"
                     )
 
-                if to_status == TaskStatus.DONE and requires_human_approval and not approval_token_id:
-                    conn.execute("ROLLBACK;")
+                if to_status == TaskStatus.DONE and requires_human_approval:
                     from orchestrator.core.policy import ApprovalRequiredError
-                    raise ApprovalRequiredError(
-                        f"Cannot transition task {task_id} to DONE: human approval token is required before merge"
-                    )
+                    if not approval_token_id:
+                        conn.execute("ROLLBACK;")
+                        raise ApprovalRequiredError(
+                            f"Cannot transition task {task_id} to DONE: human approval token is required before merge"
+                        )
+                    if not approval_manager:
+                        conn.execute("ROLLBACK;")
+                        raise ApprovalRequiredError(
+                            f"Cannot transition task {task_id} to DONE: approval_manager is required to verify token"
+                        )
+                    check_head_sha = base_sha if base_sha is not None else current_state.get("base_sha")
+                    check_policy = policy_hash or current_state.get("policy_digest")
+                    check_plan = plan_hash or current_state.get("spec_digest")
+                    try:
+                        approval_manager.verify_consumed_token_binding(
+                            token_id=approval_token_id,
+                            action="merge_pull_request",
+                            repository=repository or "",
+                            task_id=task_id,
+                            head_sha=check_head_sha or "",
+                            target_ref=target_ref,
+                            policy_hash=check_policy,
+                            plan_hash=check_plan,
+                        )
+                    except Exception as exc:
+                        conn.execute("ROLLBACK;")
+                        raise ApprovalRequiredError(
+                            f"Cannot transition task {task_id} to DONE: approval token verification failed: {exc}"
+                        ) from exc
 
 
                 # Handle retry budget check

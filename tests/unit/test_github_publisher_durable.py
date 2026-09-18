@@ -83,7 +83,7 @@ def test_verify_human_merge_detects_unmerged_state(publisher):
         return res
 
     with patch("subprocess.run", side_effect=mock_sub):
-        res = publisher.verify_human_merge(10, expected_head_sha="c" * 40)
+        res = publisher.verify_human_merge(10, expected_head_sha="c" * 40, require_approval=False)
         assert res["merged"] is False
         assert res["state"] == "OPEN"
 
@@ -104,7 +104,7 @@ def test_verify_human_merge_rejects_sha_mismatch(publisher):
         return res
 
     with patch("subprocess.run", side_effect=mock_sub), pytest.raises(GitHubPRError, match="differs from expected"):
-        publisher.verify_human_merge(11, expected_head_sha="expected" + "0" * 32)
+        publisher.verify_human_merge(11, expected_head_sha="expected" + "0" * 32, require_approval=False)
 
 
 def test_verify_human_merge_success(publisher):
@@ -125,7 +125,7 @@ def test_verify_human_merge_success(publisher):
         return res
 
     with patch("subprocess.run", side_effect=mock_sub):
-        res = publisher.verify_human_merge(12, expected_head_sha=target_sha)
+        res = publisher.verify_human_merge(12, expected_head_sha=target_sha, require_approval=False)
         assert res["merged"] is True
         assert res["state"] == "MERGED"
         assert res["head_sha"] == target_sha
@@ -149,10 +149,11 @@ def test_verify_human_merge_rejects_bot_actor(publisher):
         return res
 
     with patch("subprocess.run", side_effect=mock_sub), pytest.raises(GitHubPRError, match="merged by automated bot"):
-        publisher.verify_human_merge(13, expected_head_sha="2" * 40, require_human_actor=True)
+        publisher.verify_human_merge(13, expected_head_sha="2" * 40, require_human_actor=True, require_approval=False)
 
 
 def test_verify_human_merge_validates_consumed_approval_token(publisher):
+    from orchestrator.core.approval import ApprovalVerificationError
     target_sha = "3" * 40
     merged_pr_json = json.dumps({
         "number": 14,
@@ -164,13 +165,14 @@ def test_verify_human_merge_validates_consumed_approval_token(publisher):
     })
 
     mock_approvals = MagicMock()
-    # Case 1: unconsumed token
-    mock_approvals.get_token.return_value = {
-        "token_id": "tok-1",
-        "action": "merge_pull_request",
-        "head_sha": target_sha,
-        "consumed": False,
-    }
+    # Case 0: omitted approval data fails closed
+    with pytest.raises(GitHubPRError, match="Human approval token is mandatory"):
+        publisher.verify_human_merge(14, expected_head_sha=target_sha, require_approval=True)
+
+    # Case 1: unconsumed or invalid binding token
+    mock_approvals.verify_consumed_token_binding.side_effect = ApprovalVerificationError(
+        "Approval token 'tok-1' has not been consumed yet"
+    )
 
     def mock_sub(args, **kwargs):
         res = MagicMock()
@@ -184,8 +186,9 @@ def test_verify_human_merge_validates_consumed_approval_token(publisher):
             approval_manager=mock_approvals, approval_token_id="tok-1",
         )
 
-    # Case 2: consumed token succeeds
-    mock_approvals.get_token.return_value = {
+    # Case 2: valid consumed token succeeds
+    mock_approvals.verify_consumed_token_binding.side_effect = None
+    mock_approvals.verify_consumed_token_binding.return_value = {
         "token_id": "tok-1",
         "action": "merge_pull_request",
         "head_sha": target_sha,

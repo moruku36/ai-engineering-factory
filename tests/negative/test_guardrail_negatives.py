@@ -266,6 +266,11 @@ def test_neg_human_merge_boundary_bot_and_unapproved_fail_closed(tmp_path):
         res.stdout = bot_merged_json
         return res
 
+    # 2a. Omitted approval info fails closed
+    with pytest.raises(GitHubPRError, match="Human approval token is mandatory"):
+        publisher.verify_human_merge(10, expected_head_sha="b" * 40, require_human_actor=True, require_approval=True)
+
+    # 2b. When require_approval=False or valid mock approval provided, bot merge is rejected
     with patch("subprocess.run", side_effect=mock_sub), pytest.raises(GitHubPRError, match="merged by automated bot 'github-actions\\[bot\\]'"):
-        publisher.verify_human_merge(10, expected_head_sha="b" * 40, require_human_actor=True)
+        publisher.verify_human_merge(10, expected_head_sha="b" * 40, require_human_actor=True, require_approval=False)
 
