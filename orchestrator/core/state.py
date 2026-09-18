@@ -140,6 +140,7 @@ class StateLedger:
                     "policy_digest": policy_digest,
                     "base_sha": base_sha,
                     "candidate_digest": None,
+                    "pr_head_sha": None,
                     "attempt": 0,
                     "updated_at": now,
                     "history": [
@@ -189,6 +190,7 @@ class StateLedger:
         reason: str,
         candidate_digest: str | None = None,
         base_sha: str | None = None,
+        pr_head_sha: str | None = None,
         approval_token_id: str | None = None,
         requires_human_approval: bool = False,
         approval_manager: Any | None = None,
@@ -250,7 +252,12 @@ class StateLedger:
                         raise ApprovalRequiredError(
                             f"Cannot transition task {task_id} to DONE: approval_manager is required to verify token"
                         )
-                    check_head_sha = base_sha if base_sha is not None else current_state.get("base_sha")
+                    effective_pr_head_sha = pr_head_sha or current_state.get("pr_head_sha")
+                    if not effective_pr_head_sha:
+                        conn.execute("ROLLBACK;")
+                        raise ApprovalRequiredError(
+                            f"Cannot transition task {task_id} to DONE: PR candidate HEAD SHA is required for merge approval binding"
+                        )
                     check_policy = policy_hash or current_state.get("policy_digest")
                     check_plan = plan_hash or current_state.get("spec_digest")
                     try:
@@ -259,7 +266,7 @@ class StateLedger:
                             action="merge_pull_request",
                             repository=repository or "",
                             task_id=task_id,
-                            head_sha=check_head_sha or "",
+                            head_sha=effective_pr_head_sha,
                             target_ref=target_ref,
                             policy_hash=check_policy,
                             plan_hash=check_plan,
@@ -283,11 +290,17 @@ class StateLedger:
                 if current_status == TaskStatus.READY and to_status == TaskStatus.RUNNING and attempt == 0:
                     attempt = 1
 
-                # Invalidate candidate evidence if base_sha or spec changed
+                # Invalidate candidate evidence and PR head if base_sha changed
                 final_candidate_digest = candidate_digest if candidate_digest is not None else current_state.get("candidate_digest")
                 final_base_sha = base_sha if base_sha is not None else current_state.get("base_sha")
+                final_pr_head_sha = pr_head_sha if pr_head_sha is not None else current_state.get("pr_head_sha")
 
                 if base_sha is not None and base_sha != current_state.get("base_sha"):
+                    final_candidate_digest = None
+                    final_pr_head_sha = None
+
+                # Invalidate candidate digest if PR head mutated
+                if pr_head_sha is not None and pr_head_sha != current_state.get("pr_head_sha"):
                     final_candidate_digest = None
 
                 now = datetime.now(UTC).isoformat()
@@ -297,6 +310,7 @@ class StateLedger:
                 new_state["status"] = to_status.value
                 new_state["candidate_digest"] = final_candidate_digest
                 new_state["base_sha"] = final_base_sha
+                new_state["pr_head_sha"] = final_pr_head_sha
                 new_state["attempt"] = attempt
                 new_state["updated_at"] = now
                 new_state["history"] = current_state.get("history", []) + [

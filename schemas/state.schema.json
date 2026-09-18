@@ -55,6 +55,10 @@
     "candidate_digest": {
       "type": ["string", "null"]
     },
+    "pr_head_sha": {
+      "type": ["string", "null"],
+      "pattern": "^[a-f0-9]{40}$"
+    },
     "attempt": {
       "type": "integer",
       "minimum": 0,

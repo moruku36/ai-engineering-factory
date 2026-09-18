@@ -497,6 +497,28 @@ def test_independent_verifier_rejects_unsupported_check_type(tmp_path):
             phase_contract=bad_preserves_contract,
         )
 
+    # 3. Preserves command check_type must fail closed (not silently pass)
+    cmd_preserves_contract = {
+        "target_phase": 1,
+        "preserves": [
+            {
+                "id": "PRSV-CMD",
+                "statement": "Legacy command check type",
+                "check_type": "command",
+                "command_id": "check_invariant",
+            }
+        ],
+    }
+    with pytest.raises(PhaseContractViolationError, match="Unsupported preserves check_type 'command'"):
+        verifier.verify_candidate(
+            task_id="TASK-P1",
+            base_sha="1" * 40,
+            artifacts=artifacts,
+            execution_exit_code=0,
+            execution_output="ok",
+            phase_contract=cmd_preserves_contract,
+        )
+
 
 def test_independent_verifier_preexisting_prohibited_pattern_in_base_passes_if_not_in_diff(tmp_path):
     """Diff vs Candidate: Pre-existing prohibited pattern in base does not fail validation if unchanged."""

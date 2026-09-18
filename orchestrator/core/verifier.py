@@ -381,7 +381,7 @@ class IndependentVerifier:
                             )
 
         # 2. Evaluate preserves (Candidate-state based: invariants that must hold in candidate state)
-        allowed_preserves_check_types = {"forbidden_pattern", "required_pattern", "state_match", "command"}
+        allowed_preserves_check_types = {"forbidden_pattern", "required_pattern"}
         for rule in phase_contract.get("preserves", []):
             rule_id = rule.get("id", "PRSV")
             statement = rule.get("statement", "")
@@ -394,7 +394,7 @@ class IndependentVerifier:
                     f"Unsupported preserves check_type '{check_type}' in rule '{rule_id}': {statement}"
                 )
 
-            if check_type in ("forbidden_pattern", "state_match"):
+            if check_type == "forbidden_pattern":
                 paths_to_check = set(changed_paths)
                 if cand_contents:
                     paths_to_check.update(cand_contents.keys())
@@ -444,8 +444,7 @@ class IndependentVerifier:
                             f"not found in candidate state (rule '{rule_id}': {statement})"
                         )
 
-            elif check_type == "command":
-                pass
+
 
     @staticmethod
     def invalidate_on_mutation(

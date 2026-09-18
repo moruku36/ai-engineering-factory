@@ -263,5 +263,20 @@ def test_phase_contract_schema_valid_and_invalid():
     with pytest.raises(jsonschema.ValidationError):
         validate_against_schema(invalid_task, "task.schema.json")
 
+    # Command and state_match are removed from schema to prevent silent passes
+    for removed_type in ("command", "state_match"):
+        bad_preserves = dict(task_dict)
+        bad_preserves["phase_contract"] = {
+            "preserves": [
+                {
+                    "id": "PRSV-REMOVED",
+                    "statement": f"Testing removed type {removed_type}",
+                    "check_type": removed_type,
+                }
+            ]
+        }
+        with pytest.raises(jsonschema.ValidationError):
+            validate_against_schema(bad_preserves, "task.schema.json")
+
 
 

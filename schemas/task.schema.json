@@ -258,7 +258,7 @@
               },
               "check_type": {
                 "type": "string",
-                "enum": ["command", "required_pattern", "forbidden_pattern", "state_match"]
+                "enum": ["required_pattern", "forbidden_pattern"]
               },
               "command_id": {
                 "type": "string"
