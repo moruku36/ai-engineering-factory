@@ -9,6 +9,7 @@ from orchestrator.core.artifacts import (
 from orchestrator.core.verifier import (
     EvidenceState,
     IndependentVerifier,
+    PhaseContractViolationError,
     VerificationError,
 )
 
@@ -312,3 +313,361 @@ def test_independent_verifier_invalidates_on_mutation(tmp_path):
     assert invalidated is not None
     assert invalidated.state == EvidenceState.INVALIDATED
     assert invalidated.candidate_digest != evidence1.candidate_digest
+
+
+def test_independent_verifier_enforces_phase_contract_prohibits(tmp_path):
+    """Ensure verifier rejects future-phase remediations preemptively added by an earlier phase worker."""
+    from orchestrator.core.verifier import PhaseContractViolationError
+
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    app_dir = worktree / "app"
+    app_dir.mkdir()
+    # Simulates Initial Builder sneaking Phase 3 HARDENED remediation into Phase 1
+    (app_dir / "main.py").write_text("LAB_MODE = 'HARDENED'\nadmin_authz_remediation = True", encoding="utf-8")
+
+    dst = tmp_path / "dst"
+    collector = ArtifactCollector(allowed_paths=["app/*"])
+    artifacts = collector.collect(worktree, dst)
+
+    phase_contract = {
+        "target_phase": 1,
+        "prohibits": [
+            {
+                "id": "PROH-01",
+                "statement": "Phase 3 security remediations must not be implemented in Phase 1",
+                "target_phase": 3,
+                "check_type": "forbidden_pattern",
+                "patterns": ["HARDENED", "admin_authz_remediation"],
+                "applies_to": ["app/"],
+            }
+        ],
+    }
+
+    verifier = IndependentVerifier(worktree_dir=worktree)
+    with pytest.raises(PhaseContractViolationError, match="prohibited pattern 'HARDENED' detected"):
+        verifier.verify_candidate(
+            task_id="TASK-P1",
+            base_sha="5" * 40,
+            artifacts=artifacts,
+            execution_exit_code=0,
+            execution_output="ok",
+            phase_contract=phase_contract,
+        )
+
+
+def test_independent_verifier_enforces_phase_contract_preserves(tmp_path):
+    """Ensure verifier rejects changes that remove required preservation invariants."""
+    from orchestrator.core.verifier import PhaseContractViolationError
+
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    (worktree / "config.py").write_text("vulnerable_flag = False", encoding="utf-8")
+
+    dst = tmp_path / "dst"
+    collector = ArtifactCollector()
+    artifacts = collector.collect(worktree, dst)
+
+    phase_contract = {
+        "target_phase": 1,
+        "preserves": [
+            {
+                "id": "PRSV-01",
+                "statement": "Intentional vulnerable flag must be preserved",
+                "check_type": "required_pattern",
+                "patterns": ["vulnerable_flag = True"],
+            }
+        ],
+    }
+
+    verifier = IndependentVerifier(worktree_dir=worktree)
+    with pytest.raises(PhaseContractViolationError, match="required pattern 'vulnerable_flag = True' not found"):
+        verifier.verify_candidate(
+            task_id="TASK-P1",
+            base_sha="6" * 40,
+            artifacts=artifacts,
+            execution_exit_code=0,
+            execution_output="ok",
+            phase_contract=phase_contract,
+        )
+
+
+def test_independent_verifier_passes_clean_phase_contract(tmp_path):
+    """Ensure clean candidate changes complying with phase contract are verified."""
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    app_dir = worktree / "app"
+    app_dir.mkdir()
+    (app_dir / "main.py").write_text("LAB_MODE = 'VULNERABLE'\nvulnerable_flag = True", encoding="utf-8")
+
+    dst = tmp_path / "dst"
+    collector = ArtifactCollector(allowed_paths=["app/*"])
+    artifacts = collector.collect(worktree, dst)
+
+    phase_contract = {
+        "target_phase": 1,
+        "preserves": [
+            {
+                "id": "PRSV-01",
+                "statement": "Vulnerable baseline preserved",
+                "check_type": "required_pattern",
+                "patterns": ["vulnerable_flag = True"],
+                "applies_to": ["app/"],
+            }
+        ],
+        "prohibits": [
+            {
+                "id": "PROH-01",
+                "statement": "Phase 3 security remediations must not be implemented in Phase 1",
+                "target_phase": 3,
+                "check_type": "forbidden_pattern",
+                "patterns": ["HARDENED"],
+                "applies_to": ["app/"],
+            }
+        ],
+    }
+
+    verifier = IndependentVerifier(worktree_dir=worktree)
+    evidence = verifier.verify_candidate(
+        task_id="TASK-P1",
+        base_sha="7" * 40,
+        artifacts=artifacts,
+        execution_exit_code=0,
+        execution_output="ok",
+        phase_contract=phase_contract,
+    )
+    assert evidence.state == EvidenceState.VALID
+    assert evidence.metadata.get("phase_contract_verified") is True
+
+
+
+def test_independent_verifier_rejects_unsupported_check_type(tmp_path):
+    """Fail-closed: Unknown or unsupported check_types in phase contract must raise PhaseContractViolationError."""
+    from orchestrator.core.verifier import PhaseContractViolationError
+
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    (worktree / "test.py").write_text("print(1)", encoding="utf-8")
+
+    dst = tmp_path / "dst"
+    collector = ArtifactCollector()
+    artifacts = collector.collect(worktree, dst)
+
+    # 1. Prohibits unsupported check_type
+    bad_prohibits_contract = {
+        "target_phase": 1,
+        "prohibits": [
+            {
+                "id": "PROH-BAD",
+                "statement": "Unknown check type",
+                "check_type": "unknown_ai_rule",
+                "patterns": ["test"],
+            }
+        ],
+    }
+    verifier = IndependentVerifier(worktree_dir=worktree)
+    with pytest.raises(PhaseContractViolationError, match="Unsupported prohibits check_type 'unknown_ai_rule'"):
+        verifier.verify_candidate(
+            task_id="TASK-P1",
+            base_sha="1" * 40,
+            artifacts=artifacts,
+            execution_exit_code=0,
+            execution_output="ok",
+            phase_contract=bad_prohibits_contract,
+        )
+
+    # 2. Preserves unsupported check_type
+    bad_preserves_contract = {
+        "target_phase": 1,
+        "preserves": [
+            {
+                "id": "PRSV-BAD",
+                "statement": "Unknown check type",
+                "check_type": "unsupported_preserves_type",
+                "patterns": ["test"],
+            }
+        ],
+    }
+    with pytest.raises(PhaseContractViolationError, match="Unsupported preserves check_type 'unsupported_preserves_type'"):
+        verifier.verify_candidate(
+            task_id="TASK-P1",
+            base_sha="1" * 40,
+            artifacts=artifacts,
+            execution_exit_code=0,
+            execution_output="ok",
+            phase_contract=bad_preserves_contract,
+        )
+
+    # 3. Preserves command check_type must fail closed (not silently pass)
+    cmd_preserves_contract = {
+        "target_phase": 1,
+        "preserves": [
+            {
+                "id": "PRSV-CMD",
+                "statement": "Legacy command check type",
+                "check_type": "command",
+                "command_id": "check_invariant",
+            }
+        ],
+    }
+    with pytest.raises(PhaseContractViolationError, match="Unsupported preserves check_type 'command'"):
+        verifier.verify_candidate(
+            task_id="TASK-P1",
+            base_sha="1" * 40,
+            artifacts=artifacts,
+            execution_exit_code=0,
+            execution_output="ok",
+            phase_contract=cmd_preserves_contract,
+        )
+
+
+def test_independent_verifier_preexisting_prohibited_pattern_in_base_passes_if_not_in_diff(tmp_path):
+    """Diff vs Candidate: Pre-existing prohibited pattern in base does not fail validation if unchanged."""
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    (worktree / "app.py").write_text("HARDENED_FLAG = True\ndef unrelated():\n    return 42\n", encoding="utf-8")
+
+    dst = tmp_path / "dst"
+    collector = ArtifactCollector()
+    artifacts = collector.collect(worktree, dst)
+
+    base_contents = {
+        "app.py": "HARDENED_FLAG = True\ndef unrelated():\n    return 0\n",
+    }
+
+    phase_contract = {
+        "target_phase": 1,
+        "prohibits": [
+            {
+                "id": "PROH-01",
+                "statement": "Phase 3 security remediations must not be introduced in diff",
+                "target_phase": 3,
+                "check_type": "forbidden_pattern",
+                "patterns": ["HARDENED_FLAG"],
+            }
+        ],
+    }
+
+    verifier = IndependentVerifier(worktree_dir=worktree)
+    evidence = verifier.verify_candidate(
+        task_id="TASK-P1",
+        base_sha="2" * 40,
+        artifacts=artifacts,
+        execution_exit_code=0,
+        execution_output="ok",
+        phase_contract=phase_contract,
+        base_file_contents=base_contents,
+    )
+    assert evidence.state == EvidenceState.VALID
+
+
+def test_independent_verifier_preserves_invariant_in_unchanged_file(tmp_path):
+    """Preserves checks full candidate state: Required pattern in unchanged file passes."""
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    (worktree / "config.py").write_text("vulnerable_mode = True\n", encoding="utf-8")
+    (worktree / "new_feature.py").write_text("def hello(): pass\n", encoding="utf-8")
+
+    dst = tmp_path / "dst"
+    collector = ArtifactCollector()
+    artifacts = collector.collect(worktree, dst)
+
+    base_contents = {
+        "config.py": "vulnerable_mode = True\n",
+    }
+    base_files = {
+        "config.py": artifacts.collected_files["config.py"],
+    }
+
+    phase_contract = {
+        "target_phase": 1,
+        "preserves": [
+            {
+                "id": "PRSV-01",
+                "statement": "Vulnerable mode must be preserved in project",
+                "check_type": "required_pattern",
+                "patterns": ["vulnerable_mode = True"],
+            }
+        ],
+    }
+
+    verifier = IndependentVerifier(worktree_dir=worktree)
+    evidence = verifier.verify_candidate(
+        task_id="TASK-P1",
+        base_sha="3" * 40,
+        artifacts=artifacts,
+        execution_exit_code=0,
+        execution_output="ok",
+        base_files=base_files,
+        phase_contract=phase_contract,
+        base_file_contents=base_contents,
+    )
+    assert evidence.changed_paths == ["new_feature.py"]
+    assert evidence.state == EvidenceState.VALID
+
+
+def test_independent_verifier_rejects_empty_or_missing_patterns_or_check_type_fail_closed(tmp_path):
+    """Runtime must fail closed if phase contract rules have missing check_type or empty patterns."""
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    (worktree / "test.py").write_text("print(1)\n", encoding="utf-8")
+
+    dst = tmp_path / "dst"
+    collector = ArtifactCollector()
+    artifacts = collector.collect(worktree, dst)
+    verifier = IndependentVerifier(worktree_dir=worktree)
+
+    # 1. Prohibits missing check_type
+    with pytest.raises(PhaseContractViolationError, match="missing required check_type"):
+        verifier.verify_candidate(
+            task_id="TASK-P1",
+            base_sha="1" * 40,
+            artifacts=artifacts,
+            execution_exit_code=0,
+            execution_output="ok",
+            phase_contract={"prohibits": [{"id": "P1", "statement": "no check_type", "patterns": ["x"]}]},
+        )
+
+    # 2. Prohibits empty patterns list
+    with pytest.raises(PhaseContractViolationError, match="empty or invalid patterns"):
+        verifier.verify_candidate(
+            task_id="TASK-P1",
+            base_sha="1" * 40,
+            artifacts=artifacts,
+            execution_exit_code=0,
+            execution_output="ok",
+            phase_contract={"prohibits": [{"id": "P2", "statement": "empty patterns", "check_type": "forbidden_pattern", "patterns": []}]},
+        )
+
+    # 3. Prohibits empty pattern string
+    with pytest.raises(PhaseContractViolationError, match="empty or invalid patterns"):
+        verifier.verify_candidate(
+            task_id="TASK-P1",
+            base_sha="1" * 40,
+            artifacts=artifacts,
+            execution_exit_code=0,
+            execution_output="ok",
+            phase_contract={"prohibits": [{"id": "P3", "statement": "empty string", "check_type": "forbidden_pattern", "patterns": [""]}]},
+        )
+
+    # 4. Preserves missing check_type
+    with pytest.raises(PhaseContractViolationError, match="missing required check_type"):
+        verifier.verify_candidate(
+            task_id="TASK-P1",
+            base_sha="1" * 40,
+            artifacts=artifacts,
+            execution_exit_code=0,
+            execution_output="ok",
+            phase_contract={"preserves": [{"id": "R1", "statement": "no check_type", "patterns": ["x"]}]},
+        )
+
+    # 5. Preserves empty patterns
+    with pytest.raises(PhaseContractViolationError, match="empty or invalid patterns"):
+        verifier.verify_candidate(
+            task_id="TASK-P1",
+            base_sha="1" * 40,
+            artifacts=artifacts,
+            execution_exit_code=0,
+            execution_output="ok",
+            phase_contract={"preserves": [{"id": "R2", "statement": "empty patterns", "check_type": "required_pattern", "patterns": []}]},
+        )

@@ -4,6 +4,8 @@ Generates measured candidate digests from actual collected files, independently 
 test execution outputs, and invalidates review/approval evidence when candidate inputs mutate.
 """
 
+import difflib
+import fnmatch
 import hashlib
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -16,6 +18,10 @@ from orchestrator.core.artifacts import ArtifactCollectionResult
 
 class VerificationError(Exception):
     """Raised when evidence verification fails or evidence was tampered with."""
+
+
+class PhaseContractViolationError(VerificationError):
+    """Raised when candidate changes violate phase contract invariants or prohibited boundaries."""
 
 
 class EvidenceState(str, Enum):
@@ -161,6 +167,11 @@ class IndependentVerifier:
         builder_claimed_digest: str | None = None,
         base_files: dict[str, str] | None = None,
         junit_xml: str | None = None,
+        phase_contract: dict[str, Any] | None = None,
+        worktree_dir: Path | str | None = None,
+        file_contents: dict[str, str] | None = None,
+        base_worktree_dir: Path | str | None = None,
+        base_file_contents: dict[str, str] | None = None,
     ) -> MeasuredEvidence:
         """Independently evaluate execution evidence, rejecting self-reported claims.
 
@@ -171,6 +182,7 @@ class IndependentVerifier:
         junit_xml: optional JUnit XML report text. When supplied, test pass/fail is
             determined from independently parsed structured counts instead of a string
             heuristic over raw output.
+        phase_contract: optional phase contract dictionary specifying preserves and prohibits.
         """
         if not base_sha or len(base_sha) != 40:
             raise VerificationError("Invalid base SHA: must be 40-character commit SHA")
@@ -206,6 +218,19 @@ class IndependentVerifier:
         if not test_passed:
             raise VerificationError(f"Independent test verification failed: {test_summary}")
 
+        if phase_contract:
+            self.verify_phase_contract(
+                phase_contract=phase_contract,
+                changed_paths=changed_paths,
+                worktree_dir=worktree_dir,
+                file_contents=file_contents,
+                base_sha=base_sha,
+                base_files=base_files,
+                base_worktree_dir=base_worktree_dir,
+                base_file_contents=base_file_contents,
+            )
+            metadata["phase_contract_verified"] = True
+
         return MeasuredEvidence(
             task_id=task_id,
             base_sha=base_sha,
@@ -217,6 +242,223 @@ class IndependentVerifier:
             state=EvidenceState.VALID,
             metadata=metadata,
         )
+
+    @staticmethod
+    def _path_matches_rules(path: str, patterns: list[str] | None) -> bool:
+        if not patterns:
+            return True
+        norm = path.replace("\\", "/").strip("/")
+        for pat in patterns:
+            clean_pat = pat.replace("\\", "/").strip("/")
+            if fnmatch.fnmatch(norm, clean_pat):
+                return True
+            clean_dir = clean_pat.rstrip("/")
+            if norm == clean_dir or norm.startswith(clean_dir + "/"):
+                return True
+        return False
+
+    def verify_phase_contract(
+        self,
+        phase_contract: dict[str, Any],
+        changed_paths: list[str],
+        worktree_dir: Path | str | None = None,
+        file_contents: dict[str, str] | None = None,
+        base_sha: str | None = None,
+        base_files: dict[str, str] | None = None,
+        base_worktree_dir: Path | str | None = None,
+        base_file_contents: dict[str, str] | None = None,
+    ) -> None:
+        """Independently enforce phase contract (preserves and prohibits invariants).
+
+        Diff vs Candidate State Distinction:
+        - Prohibits: Checks newly introduced additions in diff (between base and candidate).
+          Pre-existing occurrences in base do not fail validation.
+        - Preserves: Checks invariant preservation across the candidate state (including
+          candidate files that did not change in diff).
+        Fail closed: Unknown or unsupported check_types immediately raise PhaseContractViolationError.
+        """
+        if not phase_contract:
+            return
+
+        target_dir = Path(worktree_dir).resolve() if worktree_dir else self.worktree_dir
+        base_dir = Path(base_worktree_dir).resolve() if base_worktree_dir else None
+
+        cand_contents: dict[str, str] = dict(file_contents or {})
+        b_contents: dict[str, str] = dict(base_file_contents or {})
+
+        def _get_candidate_content(rel_p: str) -> str:
+            if rel_p in cand_contents:
+                return cand_contents[rel_p]
+            if target_dir:
+                f_path = target_dir / rel_p
+                if f_path.is_file():
+                    try:
+                        c = f_path.read_text(encoding="utf-8", errors="replace")
+                        cand_contents[rel_p] = c
+                        return c
+                    except OSError:
+                        pass
+            return ""
+
+        def _get_base_content(rel_p: str) -> str:
+            if rel_p in b_contents:
+                return b_contents[rel_p]
+            if base_dir:
+                f_path = base_dir / rel_p
+                if f_path.is_file():
+                    try:
+                        c = f_path.read_text(encoding="utf-8", errors="replace")
+                        b_contents[rel_p] = c
+                        return c
+                    except OSError:
+                        pass
+            if base_sha and target_dir:
+                try:
+                    import subprocess
+                    show = subprocess.run(
+                        ["git", "show", f"{base_sha}:{rel_p}"],
+                        cwd=str(target_dir), capture_output=True, text=True, check=False,
+                    )
+                    if show.returncode == 0:
+                        b_contents[rel_p] = show.stdout
+                        return show.stdout
+                except (OSError, subprocess.SubprocessError):
+                    b_contents[rel_p] = "" 
+            return ""
+
+        def _get_added_diff_lines(rel_p: str) -> list[str]:
+            base_txt = _get_base_content(rel_p)
+            cand_txt = _get_candidate_content(rel_p)
+            base_lines = base_txt.splitlines(keepends=True)
+            cand_lines = cand_txt.splitlines(keepends=True)
+            diff = difflib.unified_diff(base_lines, cand_lines)
+            added = []
+            for line in diff:
+                if line.startswith("+") and not line.startswith("+++"):
+                    added.append(line[1:])
+            return added
+
+        # 1. Evaluate prohibits (Diff-based: evaluate only newly introduced content / paths)
+        allowed_prohibits_check_types = {"forbidden_pattern", "forbidden_symbol", "forbidden_path"}
+        for rule in phase_contract.get("prohibits", []):
+            rule_id = rule.get("id", "PROH")
+            statement = rule.get("statement", "")
+            check_type = rule.get("check_type")
+            if not check_type:
+                raise PhaseContractViolationError(
+                    f"Phase contract rule '{rule_id}' is missing required check_type: {statement}"
+                )
+            if check_type not in allowed_prohibits_check_types:
+                raise PhaseContractViolationError(
+                    f"Unsupported prohibits check_type '{check_type}' in rule '{rule_id}': {statement}"
+                )
+            patterns = rule.get("patterns")
+            if not patterns or not isinstance(patterns, list) or any(not p for p in patterns):
+                raise PhaseContractViolationError(
+                    f"Phase contract rule '{rule_id}' has empty or invalid patterns: must specify non-empty patterns"
+                )
+            applies_to = rule.get("applies_to")
+            target_phase = rule.get("target_phase")
+            phase_info = f" (target_phase: {target_phase})" if target_phase else "" 
+
+            if check_type in ("forbidden_pattern", "forbidden_symbol"):
+                for path in changed_paths:
+                    if not self._path_matches_rules(path, applies_to):
+                        continue
+                    added_lines = _get_added_diff_lines(path)
+                    added_text = "".join(added_lines)
+                    for pat in patterns:
+                        if pat and pat in added_text:
+                            raise PhaseContractViolationError(
+                                f"Phase contract violation in '{path}': prohibited pattern '{pat}' detected "
+                                f"(violates rule '{rule_id}': {statement}){phase_info}"
+                            )
+
+            elif check_type == "forbidden_path":
+                for path in changed_paths:
+                    if not self._path_matches_rules(path, applies_to):
+                        continue
+                    norm = path.replace("\\", "/").strip("/")
+                    for pat in patterns:
+                        clean_pat = pat.replace("\\", "/").strip("/")
+                        if fnmatch.fnmatch(norm, clean_pat) or norm == clean_pat or norm.startswith(clean_pat.rstrip("/") + "/"):
+                            raise PhaseContractViolationError(
+                                f"Phase contract violation: forbidden path '{path}' modified "
+                                f"(violates rule '{rule_id}': {statement}){phase_info}"
+                            )
+
+        # 2. Evaluate preserves (Candidate-state based: invariants that must hold in candidate state)
+        allowed_preserves_check_types = {"forbidden_pattern", "required_pattern"}
+        for rule in phase_contract.get("preserves", []):
+            rule_id = rule.get("id", "PRSV")
+            statement = rule.get("statement", "")
+            check_type = rule.get("check_type")
+            if not check_type:
+                raise PhaseContractViolationError(
+                    f"Phase contract rule '{rule_id}' is missing required check_type: {statement}"
+                )
+            if check_type not in allowed_preserves_check_types:
+                raise PhaseContractViolationError(
+                    f"Unsupported preserves check_type '{check_type}' in rule '{rule_id}': {statement}"
+                )
+            patterns = rule.get("patterns")
+            if not patterns or not isinstance(patterns, list) or any(not p for p in patterns):
+                raise PhaseContractViolationError(
+                    f"Phase contract rule '{rule_id}' has empty or invalid patterns: must specify non-empty patterns"
+                )
+            applies_to = rule.get("applies_to")
+
+            if check_type == "forbidden_pattern":
+                paths_to_check = set(changed_paths)
+                if cand_contents:
+                    paths_to_check.update(cand_contents.keys())
+                if target_dir and target_dir.exists():
+                    for f in target_dir.rglob("*"):
+                        if f.is_file():
+                            try:
+                                rel = str(f.relative_to(target_dir)).replace("\\", "/")
+                                paths_to_check.add(rel)
+                            except ValueError:
+                                pass
+                for path in sorted(paths_to_check):
+                    if not self._path_matches_rules(path, applies_to):
+                        continue
+                    content = _get_candidate_content(path)
+                    for pat in patterns:
+                        if pat and pat in content:
+                            raise PhaseContractViolationError(
+                                f"Phase preservation invariant violated in '{path}': "
+                                f"forbidden pattern '{pat}' present in candidate state (rule '{rule_id}': {statement})"
+                            )
+
+            elif check_type == "required_pattern":
+                candidate_all_files: set[str] = set(changed_paths)
+                if cand_contents:
+                    candidate_all_files.update(cand_contents.keys())
+                if target_dir and target_dir.exists():
+                    for f in target_dir.rglob("*"):
+                        if f.is_file():
+                            try:
+                                rel = str(f.relative_to(target_dir)).replace("\\", "/")
+                                candidate_all_files.add(rel)
+                            except ValueError:
+                                pass
+
+                applicable_files = [p for p in sorted(candidate_all_files) if self._path_matches_rules(p, applies_to)]
+                for pat in patterns:
+                    found = False
+                    for path in applicable_files:
+                        content = _get_candidate_content(path)
+                        if pat in content:
+                            found = True
+                            break
+                    if not found and applicable_files:
+                        raise PhaseContractViolationError(
+                            f"Phase preservation invariant violated: required pattern '{pat}' "
+                            f"not found in candidate state (rule '{rule_id}': {statement})"
+                        )
+
+
 
     @staticmethod
     def invalidate_on_mutation(

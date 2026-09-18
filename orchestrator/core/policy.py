@@ -122,3 +122,15 @@ class PolicyEngine:
             raise CommandNotAllowedError(
                 f"Command '{command_id}' is not in allowed command registry: {sorted(self.allowed_commands)}"
             )
+
+    def evaluate_merge_operation(self, is_automated: bool = True, has_human_approval: bool = False) -> None:
+        """Evaluate PR merge operation against Hard Deny and Human Approval policies."""
+        if is_automated:
+            raise HardDenyViolationError(
+                "Action 'automated_pr_merge' is strictly prohibited by Hard Deny policy and cannot be approved"
+            )
+        if not has_human_approval:
+            raise ApprovalRequiredError(
+                "Action 'merge_pull_request' requires explicit one-time Human Approval"
+            )
+

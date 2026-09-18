@@ -314,6 +314,137 @@ class ApprovalManager:
             except OSError:
                 pass
 
+    def get_token(self, token_id: str) -> dict[str, Any] | None:
+        """Query token record by token_id from approvals database."""
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT token_id, signature, action, repository, task_id, head_sha, target_ref,
+                       argv_digest, policy_hash, plan_hash, approved_by, created_at, expires_at,
+                       consumed, key_id, operator_signature, revoked
+                FROM approvals WHERE token_id = ?;
+                """,
+                (token_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return {
+                "token_id": row[0],
+                "signature": row[1],
+                "action": row[2],
+                "repository": row[3],
+                "task_id": row[4],
+                "head_sha": row[5],
+                "target_ref": row[6],
+                "argv_digest": row[7],
+                "policy_hash": row[8],
+                "plan_hash": row[9],
+                "approved_by": row[10],
+                "created_at": row[11],
+                "expires_at": row[12],
+                "consumed": bool(row[13]),
+                "key_id": row[14],
+                "operator_signature": row[15],
+                "revoked": bool(row[16]),
+            }
+
+    def verify_consumed_token_binding(
+        self,
+        token_id: str,
+        action: str,
+        repository: str,
+        task_id: str,
+        head_sha: str,
+        target_ref: str,
+        argv_digest: str | None = None,
+        policy_hash: str | None = None,
+        plan_hash: str | None = None,
+    ) -> dict[str, Any]:
+        """Cryptographically verify all bindings of an already-consumed approval token without double-consuming."""
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT token_id, signature, action, repository, task_id, head_sha, target_ref,
+                       argv_digest, policy_hash, plan_hash, approved_by, created_at, expires_at,
+                       consumed, key_id, operator_signature, revoked
+                FROM approvals WHERE token_id = ?;
+                """,
+                (token_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                raise ApprovalVerificationError(f"Approval token '{token_id}' not found or forged")
+
+            (
+                t_id, t_sig, t_action, t_repo, t_task, t_head, t_target,
+                t_argv, t_pol, t_plan, t_app_by, t_created, t_expires,
+                t_consumed, t_key_id, t_op_sig, t_revoked,
+            ) = row
+
+            if t_revoked:
+                raise ApprovalRevokedError(f"Approval token '{token_id}' has been revoked")
+
+            if not t_consumed:
+                raise ApprovalVerificationError(f"Approval token '{token_id}' has not been consumed yet")
+
+            # Enforce approver authentication when configured or requested
+            if self.enforce_authentication:
+                if not t_key_id or not t_op_sig:
+                    raise ApprovalVerificationError(
+                        f"Unauthenticated legacy approval token '{token_id}' rejected: re-issuance required"
+                    )
+                self.registry.verify_token_identity(t_app_by, t_key_id, action)
+
+            # Verify cryptographic HMAC signature
+            token_dict = {
+                "token_id": t_id,
+                "action": t_action,
+                "repository": t_repo,
+                "task_id": t_task,
+                "head_sha": t_head,
+                "target_ref": t_target,
+                "argv_digest": t_argv,
+                "policy_hash": t_pol,
+                "plan_hash": t_plan,
+                "approved_by": t_app_by,
+                "created_at": t_created,
+                "expires_at": t_expires,
+            }
+            if t_key_id:
+                token_dict["key_id"] = t_key_id
+            if t_op_sig:
+                token_dict["operator_signature"] = t_op_sig
+
+            expected_sig = _compute_token_signature(token_dict, self._secret_key)
+            if not hmac.compare_digest(t_sig, expected_sig):
+                raise ApprovalVerificationError(f"Cryptographic signature mismatch on token '{token_id}'")
+
+            # Attribute binding checks
+            bindings = {
+                "action": (t_action, action),
+                "repository": (t_repo, repository),
+                "task_id": (t_task, task_id),
+                "head_sha": (t_head, head_sha),
+                "target_ref": (t_target, target_ref),
+            }
+            if argv_digest is not None:
+                bindings["argv_digest"] = (t_argv, argv_digest)
+            if policy_hash is not None:
+                bindings["policy_hash"] = (t_pol, policy_hash)
+            if plan_hash is not None:
+                bindings["plan_hash"] = (t_plan, plan_hash)
+
+            for field_name, (token_val, expected_val) in bindings.items():
+                if token_val != expected_val:
+                    raise ApprovalVerificationError(
+                        f"Token binding mismatch on '{field_name}': expected '{expected_val}', found '{token_val}'"
+                    )
+
+            token_dict["consumed"] = True
+            token_dict["revoked"] = False
+            return token_dict
+
     def verify_and_consume_token(
         self,
         token_id: str,

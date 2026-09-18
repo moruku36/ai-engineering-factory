@@ -360,12 +360,86 @@ class RealGitHubStatePublisher:
                             pass
         return reconciled
 
-    def verify_human_merge(self, pr_number: int, expected_head_sha: str) -> dict[str, Any]:
-        """Verify remote GitHub PR state for verified human merge with matching head SHA."""
+    def get_pr_merge_status(
+        self,
+        pr_number: int,
+    ) -> dict[str, Any]:
+        """Read-only query of remote GitHub PR merge status without approval or human actor gate."""
         cmd = [
             "gh", "pr", "view", str(pr_number),
             "--repo", self.repo_slug,
-            "--json", "number,state,mergedAt,mergeCommit,headRefOid",
+            "--json", "number,state,mergedAt,mergeCommit,headRefOid,mergedBy",
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        if res.returncode != 0:
+            raise GitHubPRError(f"Failed to query PR #{pr_number} status from GitHub: {res.stderr}")
+
+        try:
+            data = json.loads(res.stdout)
+        except json.JSONDecodeError as exc:
+            raise GitHubPRError(f"Invalid JSON response from gh pr view #{pr_number}") from exc
+
+        state = data.get("state")
+        head_oid = data.get("headRefOid")
+        merged_by = data.get("mergedBy") or {}
+        actor_login = merged_by.get("login", "") if isinstance(merged_by, dict) else str(merged_by)
+        merge_commit = data.get("mergeCommit", {})
+        oid = merge_commit.get("oid") if isinstance(merge_commit, dict) else merge_commit
+
+        return {
+            "number": pr_number,
+            "merged": state == "MERGED",
+            "state": state,
+            "head_sha": head_oid,
+            "merged_by": actor_login or "unknown",
+            "merged_at": data.get("mergedAt"),
+            "merge_commit": oid,
+        }
+
+    def verify_human_merge(
+        self,
+        pr_number: int,
+        expected_head_sha: str,
+        approval_manager: Any,
+        approval_token_id: str,
+        task_id: str,
+        policy_hash: str,
+        plan_hash: str,
+        target_ref: str = "refs/heads/main",
+    ) -> dict[str, Any]:
+        """Verify remote GitHub PR state for verified human merge with matching head SHA.
+
+        Security Path: Human approval verification and human actor verification cannot be bypassed.
+        """
+        if not approval_manager or not approval_token_id:
+            raise GitHubPRError(
+                f"Human approval token is mandatory for verifying PR #{pr_number} merge, but approval data was omitted"
+            )
+
+        from orchestrator.core.approval import ApprovalVerificationError
+        try:
+            if not task_id or not policy_hash or not plan_hash:
+                raise GitHubPRError(
+                    f"Complete approval binding attributes (task_id, policy_hash, plan_hash) are required "
+                    f"for verifying PR #{pr_number} merge"
+                )
+            approval_manager.verify_consumed_token_binding(
+                token_id=approval_token_id,
+                action="merge_pull_request",
+                repository=self.repo_slug,
+                task_id=task_id,
+                head_sha=expected_head_sha,
+                target_ref=target_ref,
+                policy_hash=policy_hash,
+                plan_hash=plan_hash,
+            )
+        except ApprovalVerificationError as exc:
+            raise GitHubPRError(f"Approval token verification failed for PR #{pr_number} merge: {exc}") from exc
+
+        cmd = [
+            "gh", "pr", "view", str(pr_number),
+            "--repo", self.repo_slug,
+            "--json", "number,state,mergedAt,mergeCommit,headRefOid,mergedBy",
         ]
         res = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if res.returncode != 0:
@@ -391,6 +465,25 @@ class RealGitHubStatePublisher:
                 f"Merged PR #{pr_number} head SHA '{head_oid}' differs from expected '{expected_head_sha}'"
             )
 
+        merged_by = data.get("mergedBy")
+        if not merged_by:
+            raise GitHubPRError(
+                f"PR #{pr_number} mergedBy information is missing or unavailable: fail-closed on unverified merge actor"
+            )
+        actor_login = merged_by.get("login", "") if isinstance(merged_by, dict) else str(merged_by)
+        actor_login = actor_login.strip()
+        if not actor_login or actor_login.lower() == "none":
+            raise GitHubPRError(
+                f"PR #{pr_number} mergedBy actor is empty or malformed: fail-closed on unverified merge actor"
+            )
+        if (
+            actor_login.endswith("[bot]")
+            or actor_login in ("github-actions", "dependabot", "coderabbitai")
+        ):
+            raise GitHubPRError(
+                f"PR #{pr_number} was merged by automated bot '{actor_login}', not a verified human operator"
+            )
+
         merge_commit = data.get("mergeCommit", {})
         oid = merge_commit.get("oid") if isinstance(merge_commit, dict) else merge_commit
 
@@ -400,5 +493,15 @@ class RealGitHubStatePublisher:
             "merged_at": data.get("mergedAt"),
             "merge_commit": oid,
             "head_sha": head_oid,
+            "merged_by": actor_login or "unknown",
         }
+
+    def attempt_automated_merge(self, pr_number: int) -> None:
+        """Attempt automated PR merge - strictly prohibited by Hard Deny policy."""
+        from orchestrator.core.policy import HardDenyViolationError
+        raise HardDenyViolationError(
+            f"Automated merge of PR #{pr_number} is strictly prohibited by Hard Deny policy. "
+            "All merges must be authorized and performed by a verified Human Operator."
+        )
+
 

@@ -181,3 +181,135 @@ def test_neg_git_protected_branch_hard_deny():
     # Automated PR merge -> HARD DENY
     with pytest.raises(HardDenyViolationError, match="strictly prohibited by Hard Deny"):
         policy.evaluate_action("automated_pr_merge", has_valid_approval=True)
+
+
+def test_neg_phase_contract_violation_fail_closed(tmp_path):
+    """Regression test reproducing Phase Ownership Violation:
+    Phase 1 Initial Builder preemptively implementing Phase 3 security remediations must be rejected fail-closed.
+    """
+    from orchestrator.core.artifacts import ArtifactCollector
+    from orchestrator.core.verifier import IndependentVerifier, PhaseContractViolationError
+
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    app_dir = worktree / "app"
+    app_dir.mkdir()
+    # Simulates Antigravity in Phase 1 implementing HARDENED logic
+    (app_dir / "main.py").write_text(
+        "class LabMode(str, Enum):\n"
+        "    VULNERABLE = 'VULNERABLE'\n"
+        "    HARDENED = 'HARDENED'\n"
+        "if mode == LabMode.HARDENED:\n"
+        "    response.set_cookie('session', httponly=True, samesite='lax')\n",
+        encoding="utf-8",
+    )
+
+    collector = ArtifactCollector(allowed_paths=["app/*"])
+    artifacts = collector.collect(worktree, tmp_path / "collected")
+
+    phase_contract = {
+        "target_phase": 1,
+        "prohibits": [
+            {
+                "id": "PROH-003",
+                "statement": "Phase 3 security remediations (LAB-01..06) are strictly prohibited in Phase 1",
+                "target_phase": 3,
+                "check_type": "forbidden_pattern",
+                "patterns": ["HARDENED", "httponly=True", "samesite='lax'"],
+                "applies_to": ["app/"],
+            }
+        ],
+    }
+
+    verifier = IndependentVerifier(worktree_dir=worktree)
+    with pytest.raises(PhaseContractViolationError, match="prohibited pattern 'HARDENED' detected.*target_phase: 3"):
+        verifier.verify_candidate(
+            task_id="TASK-WSCL-001",
+            base_sha="1" * 40,
+            artifacts=artifacts,
+            execution_exit_code=0,
+            execution_output="All unit tests passed",
+            phase_contract=phase_contract,
+        )
+
+
+def test_neg_human_merge_boundary_bot_and_unapproved_fail_closed(tmp_path):
+    """Regression test: Automated bots and unapproved merges must fail closed."""
+    import json
+    from unittest.mock import MagicMock, patch
+
+    from orchestrator.adapters.github import GitHubPRError, RealGitHubStatePublisher
+    from orchestrator.core.policy import HardDenyViolationError
+
+    publisher = RealGitHubStatePublisher(
+        repo_slug="moruku36/ai-engineering-factory",
+        state_dir=tmp_path / "github_state",
+    )
+
+    # 1. Automated merge invocation is strictly blocked
+    with pytest.raises(HardDenyViolationError, match="Automated merge of PR #10 is strictly prohibited"):
+        publisher.attempt_automated_merge(10)
+
+    # 2. Remote merge executed by bot is rejected
+    bot_merged_json = json.dumps({
+        "number": 10,
+        "state": "MERGED",
+        "mergedAt": "2026-09-18T12:00:00Z",
+        "mergeCommit": {"oid": "a" * 40},
+        "headRefOid": "b" * 40,
+        "mergedBy": {"login": "github-actions[bot]"},
+    })
+
+    def mock_sub(args, **kwargs):
+        res = MagicMock()
+        res.returncode = 0
+        res.stdout = bot_merged_json
+        return res
+
+    # 2a. Omitted approval info fails closed (no bypass knobs exist on security path)
+    with pytest.raises(GitHubPRError, match="Human approval token is mandatory"):
+        publisher.verify_human_merge(
+            10,
+            expected_head_sha="b" * 40,
+            approval_manager=None,
+            approval_token_id=None,
+            task_id="TASK-001",
+            policy_hash="p" * 64,
+            plan_hash="s" * 64,
+        )
+
+    # 2b. When valid approval provided, automated bot merge is strictly rejected
+    mock_approvals = MagicMock()
+    mock_approvals.verify_consumed_token_binding.return_value = {"token_id": "tok-valid", "consumed": True}
+    with patch("subprocess.run", side_effect=mock_sub), pytest.raises(GitHubPRError, match="merged by automated bot 'github-actions\\[bot\\]'"):
+        publisher.verify_human_merge(
+            10,
+            expected_head_sha="b" * 40,
+            approval_manager=mock_approvals,
+            approval_token_id="tok-valid",
+            task_id="TASK-001",
+            policy_hash="p" * 64,
+            plan_hash="s" * 64,
+        )
+
+    # 2c. Missing or malformed mergedBy fails closed on unverified merge actor
+    unverified_json = json.dumps({
+        "number": 10,
+        "state": "MERGED",
+        "mergedAt": "2026-09-18T12:00:00Z",
+        "mergeCommit": {"oid": "a" * 40},
+        "headRefOid": "b" * 40,
+    })
+    with patch("subprocess.run", return_value=MagicMock(returncode=0, stdout=unverified_json)), pytest.raises(
+        GitHubPRError, match="mergedBy information is missing or unavailable"
+    ):
+        publisher.verify_human_merge(
+            10,
+            expected_head_sha="b" * 40,
+            approval_manager=mock_approvals,
+            approval_token_id="tok-valid",
+            task_id="TASK-001",
+            policy_hash="p" * 64,
+            plan_hash="s" * 64,
+        )
+
