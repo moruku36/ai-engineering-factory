@@ -234,6 +234,87 @@
     },
     "state_ref": {
       "type": "string"
+    },
+    "phase_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "target_phase": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "preserves": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "statement"],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "statement": {
+                "type": "string"
+              },
+              "check_type": {
+                "type": "string",
+                "enum": ["command", "required_pattern", "forbidden_pattern", "state_match"]
+              },
+              "command_id": {
+                "type": "string"
+              },
+              "patterns": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "applies_to": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "prohibits": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "statement"],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "statement": {
+                "type": "string"
+              },
+              "target_phase": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "check_type": {
+                "type": "string",
+                "enum": ["forbidden_pattern", "forbidden_path", "forbidden_symbol"]
+              },
+              "patterns": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "applies_to": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

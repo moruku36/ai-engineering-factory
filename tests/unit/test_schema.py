@@ -221,3 +221,47 @@ def test_schema_format_checker_rejects_invalid_datetime():
         validate_against_schema(invalid_token, "approval.schema.json")
 
 
+def test_phase_contract_schema_valid_and_invalid():
+    """Verify phase_contract schema validation accepts valid contracts and rejects malformed ones."""
+    task_dict = parse_safe_yaml(VALID_TASK_YAML)
+    task_dict["phase_contract"] = {
+        "target_phase": 1,
+        "preserves": [
+            {
+                "id": "PRSV-01",
+                "statement": "Intentional vulnerable behavior must be preserved",
+                "check_type": "forbidden_pattern",
+                "patterns": ["HARDENED"],
+                "applies_to": ["app/"],
+            }
+        ],
+        "prohibits": [
+            {
+                "id": "PROH-01",
+                "statement": "Remediation logic must not be implemented ahead of Phase 3",
+                "target_phase": 3,
+                "check_type": "forbidden_pattern",
+                "patterns": ["HARDENED", "HttpOnly=True"],
+                "applies_to": ["app/"],
+            }
+        ],
+    }
+    # Valid contract passes
+    validate_against_schema(task_dict, "task.schema.json")
+
+    # Invalid check_type in prohibits fails
+    invalid_task = dict(task_dict)
+    invalid_task["phase_contract"] = {
+        "prohibits": [
+            {
+                "id": "PROH-01",
+                "statement": "Bad check type",
+                "check_type": "invalid_type",
+            }
+        ]
+    }
+    with pytest.raises(jsonschema.ValidationError):
+        validate_against_schema(invalid_task, "task.schema.json")
+
+
+
