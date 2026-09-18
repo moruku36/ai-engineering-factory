@@ -45,6 +45,95 @@ def _detect_github_repository() -> str | None:
     return _parse_github_repository(remote)
 
 
+DEFAULT_DEMO_ARGV = {
+    "pytest": [sys.executable, "-m", "pytest", "tests/unit/", "-q"],
+}
+
+
+def cmd_init(args: argparse.Namespace) -> int:
+    """Bootstrap a local config and an isolated runtime root for a target repository."""
+    import yaml
+
+    repository = args.repository or _detect_github_repository()
+    if not repository:
+        print("init blocked: pass --repository owner/repo (auto-detection failed)")
+        return 2
+
+    runtime_root = (
+        Path(args.runtime_root).expanduser()
+        if args.runtime_root
+        else Path.home() / ".ai-engineering-factory" / "runtime" / repository.replace("/", "__")
+    )
+    for sub in ("worktrees", "logs", "leases"):
+        (runtime_root / sub).mkdir(parents=True, exist_ok=True)
+
+    config_path = Path(args.config_path) if args.config_path else Path(".ai-factory") / "config.yaml"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config = {
+        "repository": repository,
+        "runtime": "manual",
+        "runtime_root": str(runtime_root),
+    }
+    with open(config_path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(config, f, sort_keys=False)
+
+    print(f"[*] Repository: {repository}")
+    print(f"[*] Runtime root (outside the git repo, holds transient state): {runtime_root}")
+    print(f"[*] Local config written: {config_path}")
+    print()
+    print("Next steps:")
+    print("  1. Copy tasks/templates/basic-task.yaml, fill in your task, and point")
+    print("     'repository' at the value above.")
+    print("  2. python -m orchestrator.cli demo --task-file <your-task.yaml>")
+    print("  See docs/getting-started.md for the full walkthrough.")
+    return 0
+
+
+def cmd_demo(args: argparse.Namespace) -> int:
+    """Run one task through ManualAdapter end-to-end as a non-isolated local demo."""
+    import yaml
+
+    from orchestrator.adapters.manual import ManualAdapter
+
+    task_file = Path(args.task_file)
+    if not task_file.is_file():
+        print(f"demo blocked: task file not found: {task_file}")
+        return 2
+    manifest = yaml.safe_load(task_file.read_text(encoding="utf-8"))
+
+    worktree = str(Path(args.worktree or ".").resolve())
+    print(f"=== Demo: task {manifest.get('id')} via ManualAdapter (worktree={worktree}) ===")
+    print("[!] Local, non-isolated demo run for evaluation only. This is NOT the offline")
+    print("    container boundary (OfflineContainerRunner) and must not be used on")
+    print("    untrusted code; it exists to show the task -> validation -> evidence flow.")
+
+    adapter = ManualAdapter()
+    run_id = adapter.start_task(manifest, worktree)
+    for step in manifest.get("validation", []):
+        command_id = step["command_id"]
+        argv = DEFAULT_DEMO_ARGV.get(command_id)
+        if argv is None:
+            print(f"demo blocked: no built-in argv for command_id '{command_id}'; "
+                  "add it to DEFAULT_DEMO_ARGV or run this step manually")
+            return 2
+        print(f"[*] Executing validation step: {command_id}")
+        record = adapter.execute_validation_step(run_id, command_id, argv, step.get("timeout_seconds", 300))
+        print(f"    -> {record['status']} (exit={record['exit_code']})")
+
+    try:
+        results = adapter.collect_results(run_id)
+    except ValueError as e:
+        print(f"demo failed: {e}")
+        return 1
+
+    print(f"=== Result: {results['status']} ===")
+    for path, digest in results["artifact_hashes"].items():
+        print(f"  artifact: {path} -> {digest}")
+    print("This is a local demo, not signed Evidence: real runs go through")
+    print("OfflineContainerRunner + IndependentVerifier (see docs/getting-started.md).")
+    return 0 if results["status"] == "SUCCESS" else 1
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     """Run environment, security, and integration diagnostics."""
     print("=== Factory System Doctor ===")
@@ -96,7 +185,14 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     print(f"[*] Antigravity transport: {probe['status']}")
     print("[!] Native workers lack enforced OS isolation and authenticated Human approval")
     print("[*] Execution Mode: MANUAL_ONLY")
-    return 2 if all_ok else 1
+    print()
+    if all_ok:
+        print("=== Summary: environment OK. Exit code 2 is EXPECTED, not a failure: ===")
+        print("    it signals Execution Mode: MANUAL_ONLY (every merge still needs a Human")
+        print("    approval token). See docs/getting-started.md to run your first task.")
+        return 2
+    print("=== Summary: one or more checks above failed (see '[!]' lines). ===")
+    return 1
 
 
 def cmd_status(args: argparse.Namespace) -> int:
@@ -216,6 +312,34 @@ def build_parser() -> argparse.ArgumentParser:
         prog="orchestrator.cli", description="AI Engineering Factory CLI"
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # init
+    p_init = subparsers.add_parser("init", help="Bootstrap local config and runtime root for a repository")
+    p_init.add_argument(
+        "--repository",
+        default=None,
+        help="GitHub repository in owner/name form; auto-detected when omitted",
+    )
+    p_init.add_argument(
+        "--runtime-root",
+        default=None,
+        help="Directory for transient runtime state, outside the git repo "
+             "(default: ~/.ai-engineering-factory/runtime/<owner>__<repo>)",
+    )
+    p_init.add_argument(
+        "--config-path",
+        default=None,
+        help="Where to write the local config file (default: .ai-factory/config.yaml)",
+    )
+    p_init.set_defaults(func=cmd_init)
+
+    # demo
+    p_demo = subparsers.add_parser(
+        "demo", help="Run one task end-to-end via ManualAdapter as a local, non-isolated demo"
+    )
+    p_demo.add_argument("--task-file", required=True, help="Path to a task manifest YAML")
+    p_demo.add_argument("--worktree", default=None, help="Worktree to run the task against (default: cwd)")
+    p_demo.set_defaults(func=cmd_demo)
 
     # doctor
     p_doc = subparsers.add_parser("doctor", help="Run system health checks")

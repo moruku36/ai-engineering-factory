@@ -1,0 +1,52 @@
+schema_version: "2020-12"
+id: "TASK-001"                    # unique task id, e.g. "TASK-001"
+title: "Describe the change in one line"
+description: "One paragraph: what should change and why."
+phase: 1
+dependencies: []
+parallelizable: true
+role: "builder"
+
+# Replace with your own repository, e.g. "https://github.com/YOUR_ORG/YOUR_REPO"
+# ('python -m orchestrator.cli init --repository owner/repo' prints the value to use here).
+repository: "https://github.com/YOUR_GITHUB_OWNER/YOUR_REPOSITORY"
+base_ref: "main"
+branch: "task/task-001"
+
+worktree: "runtime-root/worktrees/task-001"
+allowed_paths:
+  - "src/"                        # only these paths may be touched; keep this narrow
+prohibited_paths:
+  - ".github/"
+  - "schemas/"
+
+validation:
+  - command_id: "pytest"          # must be in PolicyEngine's allowed command registry
+    timeout_seconds: 300
+
+completion_criteria:
+  - id: "CC-1"
+    statement: "All unit tests pass"
+    evidence_type: "test_run"
+
+risk: "low"
+approval:
+  before_execution: false         # require a Human approval token before the worker runs
+  before_merge: true              # require a Human approval token before merging the PR
+
+output_artifacts:
+  - kind: "test_summary"
+    path: "reports/task-001-report.json"
+    classification: "internal"
+
+resources:
+  ports: []
+  test_db: false
+  exclusive_keys: []
+permissions:
+  - "default"
+retry:
+  max_attempts: 3
+  timeout_minutes: 30
+status: "PROPOSED"
+state_ref: "state/tasks/TASK-001.json"

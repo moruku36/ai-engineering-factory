@@ -32,6 +32,7 @@ ENV/
 # Runtime / factory data (must not be committed)
 .runtime/
 runtime-root/
+.ai-factory/
 *.sqlite
 *.sqlite3
 *.db

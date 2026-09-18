@@ -7,6 +7,18 @@
 **現在のステータス: Experimental / MANUAL_ONLY (MIT License)**  
 本番利用を前提とした完全自律開発プラットフォームではなく、AIエージェントを使ったソフトウェア開発を安全に工程化するための実験的な基盤です。現在の状態と制約は [PROJECT_STATE.md](PROJECT_STATE.md) を参照してください。
 
+**⚡ 自分の環境で試す**: [15分クイックスタート (docs/getting-started.md)](docs/getting-started.md) — clone → `doctor` → `init` → サンプルタスク実行 → Evidence確認までの一本道シナリオです。
+
+### 環境ごとにできること
+
+| 環境 | CLI / 開発・テスト | Offline Container Isolation |
+| :--- | :---: | :---: |
+| Linux | ✅ CI Verified | ✅ CI Verified (Docker必須) |
+| Windows | ✅ CI Verified | ❌ 未対応 (Linuxコンテナ前提) |
+| macOS | ⚠️ Expected (未CI検証) | ❌ 未対応 |
+
+「Docker Desktopが入っているから動くだろう」と思って`OfflineContainerRunner`をWindows/macOSで使おうとすると失敗します。隔離実行が必要な場合はLinux (またはWSL2、要検証) を使ってください。詳細は [Compatibility Matrix](docs/compatibility/matrix.md) を参照してください。
+
 ---
 
 ## 🎯 対象読者
@@ -37,96 +49,38 @@
 
 ## 🚀 ライフサイクルの実像: 1つのタスクがPRになるまで
 
-AI Engineering Factory では、エージェントによる独断実行を許さないため、**CLIの一発自動実行コマンド (`run` / `ingest`) は意図的に提供していません**。タスクの取込・隔離実行・証跡照合は Python API (`ApprovedContainerLoop`, `OfflineContainerRunner`, `IndependentVerifier`) またはテストスイート経由で段階的に制御します。
+AI Engineering Factory では、エージェントによる独断実行を許さないため、**CLIの一発自動実行コマンド (`run` / `ingest`) は意図的に提供していません**。タスクの取込・隔離実行・証跡照合は CLI (`init` / `demo` / `doctor` / `approve`) と Python API (`ApprovedContainerLoop`, `OfflineContainerRunner`, `IndependentVerifier`) を組み合わせて段階的に制御します。
 
-以下は、サンプルタスク `SMP-001` が実行・検証され、マージ承認を経てPRに至る実際のフローです。
+以下はフローの要約です。**自分のリポジトリで実際に手を動かして試す場合は、[15分クイックスタート](docs/getting-started.md) を参照してください**（`tasks/templates/basic-task.yaml` をテンプレートとして使い、`moruku36/ai-engineering-factory` のようなこのリポジトリ固有の値は自分の `owner/repo` に置き換えます）。
 
-### 1. タスク仕様の確認 (`tasks/examples/sample-task.yaml`)
-エージェントへの作業指示は、自然言語チャットではなく機械可読なタスク定義（YAML）として記述します。
-```yaml
-schema_version: "2020-12"
-id: "SMP-001"
-title: "Implement Core Health Check Endpoint"
-role: "builder"
-repository: "https://github.com/moruku36/ai-engineering-factory"
-base_ref: "main"
-branch: "task/smp-001"
-allowed_paths:
-  - "orchestrator/"
-prohibited_paths:
-  - ".github/"
-  - "schemas/"
-validation:
-  - command_id: "pytest"
-    timeout_seconds: 300
-approval:
-  before_execution: false  # 実行前承認は不要
-  before_merge: true      # PRマージ前の人間承認を必須化
-```
+### 1. タスク仕様の定義
+エージェントへの作業指示は、自然言語チャットではなく機械可読なタスク定義（YAML）として記述します（`schema_version`、`allowed_paths`、`validation`、`approval` などを持つスキーマ検証済みの構造体）。実例はこのリポジトリ自身を対象にした [`tasks/examples/sample-task.yaml`](tasks/examples/sample-task.yaml)、自分のリポジトリ向けのひな形は [`tasks/templates/basic-task.yaml`](tasks/templates/basic-task.yaml) を参照してください。
 
-### 2. 環境診断と状態台帳の確認
+### 2. 環境診断・初期化・最小実行
 ```bash
-# 仮想環境の準備と依存パッケージのインストール
-python -m venv .venv
-# (OSに合わせて .venv をアクティベート)
 pip install -e ".[dev]"
 
-# リポジトリ健全性およびブランチ保護の診断
-python -m orchestrator.cli doctor
-
-# タスク状態台帳 (SQLite) の確認
-python -m orchestrator.cli status
+python -m orchestrator.cli doctor                              # 環境診断（Exit 2 = 正常 + MANUAL_ONLY）
+python -m orchestrator.cli init --repository owner/repo        # 設定 + runtime-root を作成
+python -m orchestrator.cli demo --task-file tasks/examples/sample-task.yaml --worktree .
+python -m orchestrator.cli status                               # タスク状態台帳 (SQLite) の確認
 ```
+`demo` は非隔離のローカル実行（`ManualAdapter`）でタスク→検証→Evidenceの流れを素早く確認するためのものです。信頼できないコードには使わないでください。
 
 ### 3. 隔離コンテナ実行と独立検証 (Python API)
-ワーカー（Builder）による実装後、通信遮断コンテナ内でテストを実行し、自己申告ログを信用せずに成果物差分から実測 `candidate_digest` を独立検証します。`OfflineContainerRunner` はタグ付きイメージやフリーな `argv` を受け付けず、事前に登録された `sha256:` immutableイメージIDと `command_id` のみを実行します。
-```python
-from orchestrator.core.container import ContainerCommand, OfflineContainerRunner
-from orchestrator.core.artifacts import ArtifactCollector
-from orchestrator.core.verifier import IndependentVerifier
-
-# 1. 事前にプロビジョニングした immutable image (sha256 ID 必須、タグは拒否) に対し、
-#    登録済みの command_id のみを実行する（任意の argv は受け付けない）
-runner = OfflineContainerRunner(
-    control_root="/path/to/runtime-root/SMP-001",
-    image_id="sha256:" + "0" * 64,  # `docker image inspect` で取得した実 ID
-    commands={"pytest": ContainerCommand(argv=("/usr/local/bin/pytest", "tests/unit/"))},
-)
-result = runner.run("pytest", extract_artifacts=True)
-
-# 2. コンテナから回収した成果物を安全にコピーし、マニフェストダイジェストを計算
-collector = ArtifactCollector(allowed_paths=["orchestrator/"])
-artifacts = collector.collect(result.artifacts_dir, "/path/to/runtime-root/SMP-001/collected")
-
-# 3. 自己申告ログを排除し、成果物差分から実測 candidate_digest を計算・照合
-verifier = IndependentVerifier()
-evidence = verifier.verify_candidate(
-    task_id="SMP-001",
-    base_sha="a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
-    artifacts=artifacts,
-    execution_exit_code=result.exit_code,
-    execution_output=result.output,
-)
-print(f"Verified candidate_digest: {evidence.candidate_digest}")
-```
+未信頼な成果物に対しては、通信遮断コンテナ内でテストを実行し、自己申告ログを信用せずに実測 `candidate_digest`（64桁SHA-256）を独立検証します。`OfflineContainerRunner` はタグ付きイメージやフリーな `argv` を受け付けず、事前に登録された `sha256:` immutableイメージIDと `command_id` のみを実行し、Worktreeの読み取り専用スナップショットをマウントして `base_sha` との実差分を測定します。完全なコード例は [クイックスタート §6](docs/getting-started.md#6-the-real-isolation--verification-path) を参照してください。
 
 ### 4. マージ前の人手承認トークン発行 (CLI `approve`)
-`sample-task.yaml` のポリシー (`approval.before_merge: true`) に基づき、人間オペレーターが署名鍵を用いて単回利用の承認トークンを発行します。
+`approval.before_merge: true` のポリシーに基づき、人間オペレーターが署名鍵を用いて単回利用の承認トークンを発行します。
 ```bash
 python -m orchestrator.cli approve \
-  --action merge_pull_request \
-  --repository moruku36/ai-engineering-factory \
-  --task-id SMP-001 \
-  --head-sha a1b2c3d4e5f60718293a4b5c6d7e8f9012345678 \
-  --target-ref refs/heads/main \
-  --command "git merge task/smp-001" \
-  --policy-hash 0000000000000000000000000000000000000000000000000000000000000000 \
-  --plan-hash 0000000000000000000000000000000000000000000000000000000000000000 \
-  --approved-by alice \
-  --key-file /path/to/operator.key
+  --action merge_pull_request --repository owner/repo --task-id TASK-001 \
+  --head-sha <commit-sha> --target-ref refs/heads/main \
+  --command "git merge task/task-001" \
+  --policy-hash <sha256> --plan-hash <sha256> \
+  --approved-by alice --key-file /path/to/operator.key
 ```
-※ 発行されたトークンは SQLite 状態台帳に記録され、GitHub 操作実行時に1度だけ消費（Consume）されます。
-
+発行されたトークンは SQLite 状態台帳に記録され、GitHub 操作実行時に1度だけ消費（Consume）されます。PRのpush/作成自体はFactoryが自動で行うことはなく（`GitHubStatePublisher` の push/PR作成は未実装として明示的に例外を送出）、Evidence確認後に人間が `git push` / `gh pr create` します。
 
 ---
 
@@ -236,7 +190,7 @@ pytest -v tests/
 
 - `orchestrator/` — Control Plane、State、Policy、Scheduling、Execution Adapter、Publishing、CLI
 - `schemas/` — Task、Plan、Result、State、ApprovalなどのMachine-readable Schema
-- `tasks/` — Task Manifest、Plan、Active / Completed Example、Workflow Input
+- `tasks/` — Task Manifest、Plan、Active / Completed Example、Workflow Input（`tasks/templates/` に自分のリポジトリ向けひな形）
 - `state/` — Version管理可能なState ProjectionやAudit Artifact。Transient Runtime StateはGit外に保存
 - `.agents/` — Agent向けRepository-local Rule、Skill、Procedure
 - `hooks/` — Lifecycle / Validation Hook
@@ -297,12 +251,15 @@ Automatic MergeやUnattended Production Deploymentは、このFactoryの目標�
 
 ## Documentation
 
+- [Getting Started (15分クイックスタート)](docs/getting-started.md)
+- [Adapter Guide](docs/adapters/README.md) — Claude Code / Codex / 独自Adapterの繋ぎ方
 - [Architecture](ARCHITECTURE.md)
 - [Security Policy](SECURITY.md)
 - [Operations Guide](OPERATIONS.md)
 - [Contributing Guide](CONTRIBUTING.md)
 - [Agent Specifications](AGENTS.md)
 - [Project State](PROJECT_STATE.md)
+- [Compatibility Matrix](docs/compatibility/matrix.md)
 - [ADR](docs/adr/)
 - [設計に影響した資料・参考文献](docs/architecture/design-influences.md)
 
