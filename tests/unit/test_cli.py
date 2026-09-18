@@ -1,9 +1,19 @@
 """Unit tests for orchestrator.cli commands (AC-H06)."""
 
+import re
+import subprocess
 import sys
+
+import yaml
 
 from orchestrator.cli import _parse_github_repository, main
 from orchestrator.core.state import StateLedger, TaskStatus
+
+
+def _init_git_repo(path):
+    subprocess.run(["git", "init", "-q", str(path)], check=True)
+    subprocess.run(["git", "-C", str(path), "config", "user.email", "t@example.com"], check=True)
+    subprocess.run(["git", "-C", str(path), "config", "user.name", "t"], check=True)
 
 
 def test_parse_github_repository():
@@ -134,6 +144,126 @@ def test_cli_cancel_running_task_with_confirmed_termination(tmp_path, capsys, mo
     captured = capsys.readouterr()
     assert "transitioned to CANCELLED" in captured.out
     assert ledger.get_state("RUN-001")["status"] == TaskStatus.CANCELLED.value
+
+
+def test_cli_init_creates_runtime_root_and_local_config(tmp_path, monkeypatch, capsys):
+    repo = tmp_path / "target-repo"
+    repo.mkdir()
+    _init_git_repo(repo)
+    monkeypatch.chdir(repo)
+
+    runtime_root = tmp_path / "runtime"
+    sys.argv = [
+        "orchestrator.cli", "init",
+        "--repository", "someowner/somerepo",
+        "--runtime-root", str(runtime_root),
+    ]
+    exit_code = main()
+    assert exit_code == 0
+
+    assert (runtime_root / "worktrees").is_dir()
+    assert (runtime_root / "logs").is_dir()
+    assert (runtime_root / "leases").is_dir()
+
+    config_file = repo / ".ai-factory" / "config.yaml"
+    assert config_file.is_file()
+    config = yaml.safe_load(config_file.read_text(encoding="utf-8"))
+    assert config["repository"] == "someowner/somerepo"
+    assert config["runtime_root"] == str(runtime_root)
+
+    captured = capsys.readouterr()
+    assert "[*] Repository: someowner/somerepo" in captured.out
+
+
+def test_cli_init_blocks_runtime_root_inside_git_repo(tmp_path, monkeypatch, capsys):
+    repo = tmp_path / "target-repo"
+    repo.mkdir()
+    _init_git_repo(repo)
+    monkeypatch.chdir(repo)
+
+    runtime_root_inside = repo / "runtime-inside"
+    sys.argv = [
+        "orchestrator.cli", "init",
+        "--repository", "someowner/somerepo",
+        "--runtime-root", str(runtime_root_inside),
+    ]
+    exit_code = main()
+    assert exit_code == 2
+    captured = capsys.readouterr()
+    assert "is inside a git repository" in captured.out
+    assert not runtime_root_inside.exists()
+    assert not (repo / ".ai-factory").exists()
+
+
+def test_cli_init_appends_to_git_info_exclude(tmp_path, monkeypatch, capsys):
+    repo = tmp_path / "target-repo"
+    repo.mkdir()
+    _init_git_repo(repo)
+    monkeypatch.chdir(repo)
+
+    runtime_root = tmp_path / "runtime"
+    sys.argv = [
+        "orchestrator.cli", "init",
+        "--repository", "someowner/somerepo",
+        "--runtime-root", str(runtime_root),
+    ]
+    exit_code = main()
+    assert exit_code == 0
+
+    exclude_file = repo / ".git" / "info" / "exclude"
+    assert exclude_file.is_file()
+    exclude_lines = exclude_file.read_text(encoding="utf-8").splitlines()
+    assert "/.ai-factory/" in exclude_lines
+
+    # The repo's tracked .gitignore must never be touched by init.
+    assert not (repo / ".gitignore").exists()
+
+    captured = capsys.readouterr()
+    assert "Added to" in captured.out
+    assert ".git/info/exclude" in captured.out
+
+
+def test_cli_demo_rejects_invalid_task_schema(tmp_path, capsys):
+    bad_task_file = tmp_path / "bad-task.yaml"
+    bad_task_file.write_text(yaml.safe_dump({"id": "TASK-001", "title": "missing required fields"}))
+
+    sys.argv = ["orchestrator.cli", "demo", "--task-file", str(bad_task_file)]
+    exit_code = main()
+    assert exit_code == 2
+    captured = capsys.readouterr()
+    assert "demo blocked: task manifest failed schema validation" in captured.out
+
+
+def test_cli_demo_end_to_end_produces_64_char_candidate_digest(tmp_path, capsys):
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[2]
+    template = yaml.safe_load(
+        (repo_root / "tasks" / "templates" / "basic-task.yaml").read_text(encoding="utf-8")
+    )
+    template["id"] = "TASK-900"
+    template["repository"] = "https://github.com/example/demo-repo"
+
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    (worktree / "test_trivial.py").write_text("def test_ok():\n    assert True\n", encoding="utf-8")
+
+    task_file = tmp_path / "task.yaml"
+    task_file.write_text(yaml.safe_dump(template), encoding="utf-8")
+
+    sys.argv = [
+        "orchestrator.cli", "demo",
+        "--task-file", str(task_file),
+        "--worktree", str(worktree),
+    ]
+    exit_code = main()
+    assert exit_code == 0
+
+    captured = capsys.readouterr()
+    assert "=== Result: SUCCESS ===" in captured.out
+    match = re.search(r"candidate_digest: ([0-9a-f]+)", captured.out)
+    assert match is not None
+    assert len(match.group(1)) == 64
 
 
 def test_cli_cancel_running_task_blocked_when_termination_fails(tmp_path, capsys, monkeypatch):

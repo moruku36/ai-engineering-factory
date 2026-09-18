@@ -160,6 +160,17 @@ class ManualAdapter(ExecutionAdapter):
         else:
             final_status = "FAILED"
 
+        # ManualAdapter has no IndependentVerifier pass, so this is not Evidence-grade:
+        # candidate_digest is deterministically derived from the artifacts this run
+        # actually measured (not a placeholder constant), but it is self-reported by
+        # the same process that ran the validation, not independently re-measured
+        # against base_sha the way OfflineContainerRunner + IndependentVerifier are.
+        base_sha = "0" * 40
+        diff_source = "\n".join(
+            f"{path}:{digest}" for path, digest in sorted(artifact_hashes.items()) if digest
+        )
+        candidate_digest = hashlib.sha256(f"{base_sha}:{diff_source}".encode()).hexdigest()
+
         now = datetime.now(UTC).isoformat()
         return {
             "run_id": run_id,
@@ -167,9 +178,9 @@ class ManualAdapter(ExecutionAdapter):
             "attempt": 1,
             "spec_sha": "0" * 64,
             "policy_sha": "0" * 64,
-            "base_sha": "0" * 40,
-            "candidate_digest": "0" * 40,
-            "changed_paths": ["orchestrator/adapters/manual.py"],
+            "base_sha": base_sha,
+            "candidate_digest": candidate_digest,
+            "changed_paths": sorted(path for path, digest in artifact_hashes.items() if digest),
             "validations": run_info["validations"],
             "artifact_hashes": artifact_hashes,
             "timestamp": now,

@@ -3,7 +3,7 @@
 ## 1. Directory Separation
 - **Repository Root**: Code, configuration, documentation, audited schemas, verified state projections.
 - **Runtime Root**: Ephemeral operational data.
-  - Path: `~/.gemini/antigravity/scratch/ai-engineering-factory-runtime/`
+  - Path: `~/.ai-engineering-factory/runtime/<owner>__<repo>/`, created by `python -m orchestrator.cli init` (vendor-neutral; not specific to any one adapter).
   - Subdirectories:
     - `worktrees/`: Isolated Git worktree clones for agent tasks.
     - `leases/`: Active execution lock and lease records.

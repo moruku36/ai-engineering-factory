@@ -14,7 +14,7 @@ now-superseded historical baseline this guide has moved past.
 
 ## 1. Runtime Isolation
 - All runtime transient state (active SQLite DB, worker PID records, distributed leases, raw execution logs) must be placed in `runtime-root`, completely isolated from the git repository.
-- Default runtime root location: `~/.gemini/antigravity/scratch/ai-engineering-factory-runtime/`.
+- Default runtime root location: `~/.ai-engineering-factory/runtime/<owner>__<repo>/`, created by `python -m orchestrator.cli init` (or `ai-factory init`). This path is vendor-neutral: Antigravity is one execution adapter among several (`ManualAdapter`, `OfflineContainerRunner`, `NativeAntigravityAdapter`), not a requirement of the runtime layout. A prior default under `~/.gemini/antigravity/scratch/...` is still honored if you already have state there, but new setups should use `init`.
 - `ProcessTreeController` runs under the host user. Path validation only checks API
   arguments; it does not restrict code executed by the worker or its network access.
 - `reserve_ephemeral_port()` now returns a context-managed `PortReservation` with
