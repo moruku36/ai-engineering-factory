@@ -1,5 +1,6 @@
 """Worktree governance, path inspection, and handoff resume engine."""
 
+import hashlib
 import json
 import os
 import shutil
@@ -76,6 +77,113 @@ def validate_paths_against_policy(
                 raise PathSecurityError(
                     f"Path '{clean_path}' is not within any allowed paths: {allowed_paths}"
                 )
+
+
+def snapshot_worktree(worktree_dir: Path | str, dest_dir: Path | str) -> tuple[Path, str, dict[str, str]]:
+    """Export a read-only, git-tracked-only snapshot of a worktree for container mounting.
+
+    Enumerates exactly the files git considers tracked at the worktree's current state
+    (via `git ls-files --cached`), copies each into dest_dir with symlinks and any
+    non-regular file rejected, and returns:
+      - dest_dir itself,
+      - a deterministic content digest over the whole snapshot (for future approval
+        binding), and
+      - a rel_path -> sha256 map of every snapshotted file, so a caller can compute a
+        genuine diff (see IndependentVerifier.compute_diff / compute_base_file_digests)
+        instead of treating the entire snapshot as "changed".
+
+    This snapshot is what should be bind-mounted read-only into the container, rather
+    than the live worktree path: it excludes .git and any ignored/untracked scratch
+    content, and copying it (instead of bind-mounting the worktree itself) means the
+    trusted controller, not the container, decides exactly what content is exposed.
+    """
+    src = Path(worktree_dir).resolve()
+    dst = Path(dest_dir).resolve()
+    if dst.exists():
+        raise ValueError(f"Snapshot destination already exists: {dst}")
+    if not src.is_dir():
+        raise ValueError(f"Worktree directory does not exist: {src}")
+
+    result = subprocess.run(
+        ["git", "ls-files", "-z", "--cached", "--exclude-standard"],
+        cwd=str(src), capture_output=True, check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Failed to list tracked worktree files: {result.stderr.decode('utf-8', 'replace').strip()}"
+        )
+
+    rel_paths = [p for p in result.stdout.decode("utf-8", "strict").split("\0") if p]
+    dst.mkdir(parents=True, mode=0o755)
+
+    file_digests: dict[str, str] = {}
+    for rel in rel_paths:
+        clean_rel = sanitize_relative_path(rel)
+        source_file = src / clean_rel
+        if source_file.is_symlink() or not source_file.is_file():
+            raise PathSecurityError(f"Refusing to snapshot non-regular tracked path: {rel}")
+
+        target_file = dst / clean_rel
+        target_file.parent.mkdir(parents=True, exist_ok=True)
+        content = source_file.read_bytes()
+        target_file.write_bytes(content)
+        target_file.chmod(0o444)
+        file_digests[clean_rel] = hashlib.sha256(content).hexdigest()
+
+    canonical = "\n".join(f"{path}:{sha}" for path, sha in sorted(file_digests.items()))
+    snapshot_digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return dst, snapshot_digest, file_digests
+
+
+def compute_base_file_digests(
+    repo_root: Path | str,
+    base_sha: str,
+    allowed_paths: list[str] | None = None,
+) -> dict[str, str]:
+    """Compute rel_path -> sha256 content digest for tracked files at base_sha.
+
+    Reads content directly from git history (git worktrees share the same object
+    store as their originating repository, so this also works from a worktree path),
+    so it reflects the pre-task commit regardless of what the worktree currently
+    contains. Pass this as IndependentVerifier.verify_candidate's base_files so
+    changed_paths reflects a genuinely measured diff rather than every collected file.
+
+    allowed_paths, when given, restricts which base paths are fetched (the same
+    prefixes the task's ArtifactCollector is restricted to) to bound the number of
+    `git show` calls on large repositories.
+    """
+    repo = Path(repo_root).resolve()
+    listing = subprocess.run(
+        ["git", "ls-tree", "-r", "--name-only", "-z", base_sha],
+        cwd=str(repo), capture_output=True, check=False,
+    )
+    if listing.returncode != 0:
+        raise RuntimeError(
+            f"Failed to list base tree {base_sha}: {listing.stderr.decode('utf-8', 'replace').strip()}"
+        )
+
+    clean_allowed = [p.replace("\\", "/").strip("/") for p in (allowed_paths or [])]
+
+    def _in_scope(rel: str) -> bool:
+        if not clean_allowed:
+            return True
+        return any(rel == p or rel.startswith(p.rstrip("/") + "/") or "*" in p for p in clean_allowed)
+
+    digests: dict[str, str] = {}
+    for rel in (p for p in listing.stdout.decode("utf-8", "strict").split("\0") if p):
+        if not _in_scope(rel):
+            continue
+        clean_rel = sanitize_relative_path(rel)
+        show = subprocess.run(
+            ["git", "show", f"{base_sha}:{rel}"],
+            cwd=str(repo), capture_output=True, check=False,
+        )
+        if show.returncode != 0:
+            # E.g. a submodule gitlink entry with no blob content; skip rather than
+            # fail the whole diff for a path the collector will not produce anyway.
+            continue
+        digests[clean_rel] = hashlib.sha256(show.stdout).hexdigest()
+    return digests
 
 
 class WorktreeManager:

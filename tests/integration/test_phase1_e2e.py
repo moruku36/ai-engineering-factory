@@ -81,7 +81,7 @@ def test_phase1_e2e_single_agent_flow(tmp_path):
     )
 
     # Step 8: Transition to VALIDATING with candidate SHA
-    candidate_digest = "1" * 40
+    candidate_digest = "1" * 64
     state = ledger.transition(
         task_id, 2, TaskStatus.VALIDATING, "Validating candidate diff", candidate_digest=candidate_digest
     )

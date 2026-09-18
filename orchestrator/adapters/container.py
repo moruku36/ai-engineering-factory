@@ -20,6 +20,11 @@ from orchestrator.core.artifacts import ArtifactCollector, ArtifactExtractionErr
 from orchestrator.core.container import OfflineContainerRunner
 from orchestrator.core.sandbox import _get_process_creation_time, _is_process_alive
 from orchestrator.core.verifier import IndependentVerifier, VerificationError
+from orchestrator.core.worktree import (
+    PathSecurityError,
+    compute_base_file_digests,
+    snapshot_worktree,
+)
 
 
 class ContainerAdmissionError(RuntimeError):
@@ -145,22 +150,77 @@ class ApprovedContainerAdapter(ExecutionAdapter):
                                     os.getpid(), started))
         except sqlite3.IntegrityError as exc:
             raise ContainerAdmissionError("Task already claimed; no automatic redispatch") from exc
+        # A real worktree (created by WorktreeManager.create_worktree) is an actual
+        # directory on disk; a bare reference string used by tests/fixtures is not.
+        # Only when it is real do we snapshot and mount it, so that verification runs
+        # against the task's actual (already builder-edited) source tree instead of
+        # an always-empty container scratch directory.
+        worktree_dir = Path(worktree_path)
+        allowed_paths = plan.get("allowed_paths", ["*"])
+        source_artifacts = None
+        base_files = None
+        run_kwargs: dict = {}
+        if worktree_dir.is_dir():
+            try:
+                snapshot_dir, _snapshot_digest, _snapshot_files = snapshot_worktree(
+                    worktree_dir, self.root / run_id / "workspace_snapshot",
+                )
+                source_artifacts = ArtifactCollector(allowed_paths=allowed_paths).collect(
+                    snapshot_dir, self.root / run_id / "collected_source",
+                )
+                try:
+                    base_files = compute_base_file_digests(
+                        worktree_dir, context["head_sha"], allowed_paths=allowed_paths,
+                    )
+                except RuntimeError:
+                    # base_sha unreachable from this object store (e.g. a shallow
+                    # clone): fall back to a best-effort, non-diff-verified digest
+                    # rather than blocking the run entirely.
+                    base_files = None
+                run_kwargs["workspace_mount"] = snapshot_dir
+            except (PathSecurityError, ArtifactExtractionError, RuntimeError, ValueError) as exc:
+                raise ContainerAdmissionError(f"Worktree snapshot failed: {exc}") from exc
+
         try:
             # Persist reservation before consume. A crash between the two databases
             # may require operator recovery, but can never silently reuse a token.
             self.approvals.verify_and_consume_token(token_id=token_id, **context)
             self._status(run_id, "ADMITTED")
-            result = runner.run(plan["command_id"], plan["inputs"], run_id=run_id)
+            result = runner.run(plan["command_id"], plan["inputs"], run_id=run_id, **run_kwargs)
             if result.run_id != run_id:
                 raise ContainerAdmissionError("Container result identity differs from admission")
 
             candidate_digest = None
             changed_paths = []
-            if result.exit_code == 0 and result.artifacts_dir and result.artifacts_dir.exists():
-                has_files = any(result.artifacts_dir.iterdir())
-                if has_files:
-                    try:
-                        collector = ArtifactCollector(allowed_paths=plan.get("allowed_paths", ["*"]))
+            if result.exit_code == 0:
+                try:
+                    if source_artifacts is not None:
+                        # Real worktree available: verify the actual source diff.
+                        # The container's own output is used only for its
+                        # independently-produced JUnit report, if any.
+                        junit_xml = None
+                        if result.artifacts_dir and result.artifacts_dir.exists():
+                            report = result.artifacts_dir / "report.xml"
+                            if report.is_file():
+                                junit_xml = report.read_text(encoding="utf-8", errors="replace")
+                        verifier = IndependentVerifier()
+                        measured = verifier.verify_candidate(
+                            task_id=task_id,
+                            base_sha=context["head_sha"],
+                            artifacts=source_artifacts,
+                            execution_exit_code=result.exit_code,
+                            execution_output=result.output,
+                            base_files=base_files,
+                            junit_xml=junit_xml,
+                        )
+                        candidate_digest = measured.candidate_digest
+                        changed_paths = measured.changed_paths
+                    elif (result.artifacts_dir and result.artifacts_dir.exists()
+                            and any(result.artifacts_dir.iterdir())):
+                        # Legacy fallback for callers with no real worktree directory
+                        # (e.g. a plan that only runs a container-generated check):
+                        # verify whatever the container itself produced, as before.
+                        collector = ArtifactCollector(allowed_paths=allowed_paths)
                         collected_dir = self.root / run_id / "collected_artifacts"
                         collection_res = collector.collect(result.artifacts_dir, collected_dir)
                         verifier = IndependentVerifier()
@@ -173,8 +233,8 @@ class ApprovedContainerAdapter(ExecutionAdapter):
                         )
                         candidate_digest = measured.candidate_digest
                         changed_paths = measured.changed_paths
-                    except (ArtifactExtractionError, VerificationError) as exc:
-                        raise ContainerAdmissionError(f"Artifact verification failed: {exc}") from exc
+                except (ArtifactExtractionError, VerificationError) as exc:
+                    raise ContainerAdmissionError(f"Artifact verification failed: {exc}") from exc
 
             evidence = {
                 "status": "SUCCESS" if result.exit_code == 0 else "FAILED",

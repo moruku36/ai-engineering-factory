@@ -1,14 +1,32 @@
 """Unit tests for worktree management, path sanitization, and handoff recovery."""
 
+import subprocess
+
 import pytest
 
 from orchestrator.core.worktree import (
     HandoffManager,
     HandoffVerificationError,
     PathSecurityError,
+    compute_base_file_digests,
     sanitize_relative_path,
+    snapshot_worktree,
     validate_paths_against_policy,
 )
+
+
+def _init_repo(path):
+    subprocess.run(["git", "init", "-q", str(path)], check=True)
+    subprocess.run(["git", "-C", str(path), "config", "user.email", "test@example.com"], check=True)
+    subprocess.run(["git", "-C", str(path), "config", "user.name", "test"], check=True)
+
+
+def _commit_all(path, message):
+    subprocess.run(["git", "-C", str(path), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(path), "commit", "-q", "-m", message], check=True)
+    return subprocess.run(
+        ["git", "-C", str(path), "rev-parse", "HEAD"], capture_output=True, text=True, check=True,
+    ).stdout.strip()
 
 
 def test_sanitize_relative_path_safety():
@@ -94,4 +112,72 @@ def test_handoff_save_and_resume_verification(tmp_path):
     # Invalidate if candidate SHA changed (stale evidence)
     with pytest.raises(HandoffVerificationError, match="Stale evidence rejected"):
         mgr.verify_candidate_evaluation(task_id, "different" + "c" * 31)
+
+
+def test_snapshot_worktree_copies_only_tracked_files(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    (repo / "tracked.py").write_text("x = 1", encoding="utf-8")
+    _commit_all(repo, "initial")
+    (repo / "untracked.py").write_text("should not appear", encoding="utf-8")
+
+    dst, digest, files = snapshot_worktree(repo, tmp_path / "snapshot")
+
+    assert (dst / "tracked.py").read_text(encoding="utf-8") == "x = 1"
+    assert not (dst / "untracked.py").exists()
+    assert not (dst / ".git").exists()
+    assert files == {"tracked.py": files["tracked.py"]}
+    assert len(digest) == 64
+
+
+def test_snapshot_worktree_rejects_existing_destination(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    (repo / "a.py").write_text("a", encoding="utf-8")
+    _commit_all(repo, "initial")
+
+    dest = tmp_path / "already-here"
+    dest.mkdir()
+    with pytest.raises(ValueError, match="already exists"):
+        snapshot_worktree(repo, dest)
+
+
+def test_compute_base_file_digests_matches_git_show(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    (repo / "orchestrator").mkdir()
+    (repo / "orchestrator" / "a.py").write_text("base", encoding="utf-8")
+    (repo / "orchestrator" / "b.py").write_text("unchanged", encoding="utf-8")
+    base_sha = _commit_all(repo, "base")
+
+    digests = compute_base_file_digests(repo, base_sha, allowed_paths=["orchestrator/"])
+    assert set(digests) == {"orchestrator/a.py", "orchestrator/b.py"}
+
+    # Now mutate and confirm the base digests still describe the original content,
+    # regardless of what the worktree currently holds.
+    (repo / "orchestrator" / "a.py").write_text("changed", encoding="utf-8")
+    unchanged_digests = compute_base_file_digests(repo, base_sha, allowed_paths=["orchestrator/"])
+    assert unchanged_digests == digests
+
+
+def test_snapshot_and_base_digests_reveal_genuine_diff(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    (repo / "orchestrator").mkdir()
+    (repo / "orchestrator" / "a.py").write_text("base", encoding="utf-8")
+    (repo / "orchestrator" / "b.py").write_text("unchanged", encoding="utf-8")
+    base_sha = _commit_all(repo, "base")
+
+    (repo / "orchestrator" / "a.py").write_text("changed by agent", encoding="utf-8")
+    _commit_all(repo, "agent change")
+
+    base_files = compute_base_file_digests(repo, base_sha, allowed_paths=["orchestrator/"])
+    _, _, snapshot_files = snapshot_worktree(repo, tmp_path / "snapshot")
+
+    changed = sorted(p for p, d in snapshot_files.items() if base_files.get(p) != d)
+    assert changed == ["orchestrator/a.py"]
 
