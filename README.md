@@ -107,6 +107,10 @@ python -m orchestrator.cli approve \
 
 本システムは、AIエージェントに直接操作を許さず、**制御プレーン（Control Plane）** が単一の状態台帳（Single Writer + CAS）と厳格なスキーマによって全プロセスを統制します。
 
+![AI Engineering Factory アーキテクチャ図（実装準拠版）](docs/architecture/images/architecture-diagram.png)
+
+> 上図は現在リポジトリに実装されている範囲のみを描いています。Redis / S3 / Slack / Notion 連携やCI/CDでの自動デプロイなどは将来構想であり、現時点では実装されていません（詳細は [PROJECT_STATE.md](PROJECT_STATE.md) を参照）。
+
 ```text
 要件定義 / 仕様策定 (JSON Schema)
         ↓
