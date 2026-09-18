@@ -87,8 +87,7 @@ def _add_to_git_exclude(repo_cwd: Path, entries: set[str]) -> bool:
     if not missing:
         return True
     with open(exclude_file, "a", encoding="utf-8") as f:
-        for entry in missing:
-            f.write(entry + "\n")
+        f.writelines(entry + "\n" for entry in missing)
     return True
 
 
@@ -155,7 +154,6 @@ def cmd_init(args: argparse.Namespace) -> int:
 def cmd_demo(args: argparse.Namespace) -> int:
     """Run one task through ManualAdapter end-to-end as a non-isolated local demo."""
     import jsonschema
-
     import yaml as pyyaml
 
     from orchestrator.adapters.manual import ManualAdapter

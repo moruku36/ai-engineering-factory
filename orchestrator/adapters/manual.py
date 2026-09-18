@@ -169,7 +169,7 @@ class ManualAdapter(ExecutionAdapter):
         diff_source = "\n".join(
             f"{path}:{digest}" for path, digest in sorted(artifact_hashes.items()) if digest
         )
-        candidate_digest = hashlib.sha256(f"{base_sha}:{diff_source}".encode("utf-8")).hexdigest()
+        candidate_digest = hashlib.sha256(f"{base_sha}:{diff_source}".encode()).hexdigest()
 
         now = datetime.now(UTC).isoformat()
         return {
