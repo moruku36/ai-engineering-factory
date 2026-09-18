@@ -130,3 +130,78 @@ def test_verify_human_merge_success(publisher):
         assert res["state"] == "MERGED"
         assert res["head_sha"] == target_sha
         assert res["merge_commit"] == merge_sha
+
+
+def test_verify_human_merge_rejects_bot_actor(publisher):
+    merged_pr_json = json.dumps({
+        "number": 13,
+        "state": "MERGED",
+        "mergedAt": "2026-09-16T12:30:00Z",
+        "mergeCommit": {"oid": "1" * 40},
+        "headRefOid": "2" * 40,
+        "mergedBy": {"login": "github-actions[bot]"},
+    })
+
+    def mock_sub(args, **kwargs):
+        res = MagicMock()
+        res.returncode = 0
+        res.stdout = merged_pr_json
+        return res
+
+    with patch("subprocess.run", side_effect=mock_sub), pytest.raises(GitHubPRError, match="merged by automated bot"):
+        publisher.verify_human_merge(13, expected_head_sha="2" * 40, require_human_actor=True)
+
+
+def test_verify_human_merge_validates_consumed_approval_token(publisher):
+    target_sha = "3" * 40
+    merged_pr_json = json.dumps({
+        "number": 14,
+        "state": "MERGED",
+        "mergedAt": "2026-09-16T12:30:00Z",
+        "mergeCommit": {"oid": "4" * 40},
+        "headRefOid": target_sha,
+        "mergedBy": {"login": "human-operator"},
+    })
+
+    mock_approvals = MagicMock()
+    # Case 1: unconsumed token
+    mock_approvals.get_token.return_value = {
+        "token_id": "tok-1",
+        "action": "merge_pull_request",
+        "head_sha": target_sha,
+        "consumed": False,
+    }
+
+    def mock_sub(args, **kwargs):
+        res = MagicMock()
+        res.returncode = 0
+        res.stdout = merged_pr_json
+        return res
+
+    with patch("subprocess.run", side_effect=mock_sub), pytest.raises(GitHubPRError, match="has not been consumed yet"):
+        publisher.verify_human_merge(
+            14, expected_head_sha=target_sha,
+            approval_manager=mock_approvals, approval_token_id="tok-1",
+        )
+
+    # Case 2: consumed token succeeds
+    mock_approvals.get_token.return_value = {
+        "token_id": "tok-1",
+        "action": "merge_pull_request",
+        "head_sha": target_sha,
+        "consumed": True,
+    }
+    with patch("subprocess.run", side_effect=mock_sub):
+        res = publisher.verify_human_merge(
+            14, expected_head_sha=target_sha,
+            approval_manager=mock_approvals, approval_token_id="tok-1",
+        )
+        assert res["merged"] is True
+        assert res["merged_by"] == "human-operator"
+
+
+def test_attempt_automated_merge_blocked_by_hard_deny(publisher):
+    from orchestrator.core.policy import HardDenyViolationError
+    with pytest.raises(HardDenyViolationError, match="Automated merge of PR #99 is strictly prohibited"):
+        publisher.attempt_automated_merge(99)
+

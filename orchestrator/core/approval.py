@@ -314,6 +314,41 @@ class ApprovalManager:
             except OSError:
                 pass
 
+    def get_token(self, token_id: str) -> dict[str, Any] | None:
+        """Query token record by token_id from approvals database."""
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT token_id, signature, action, repository, task_id, head_sha, target_ref,
+                       argv_digest, policy_hash, plan_hash, approved_by, created_at, expires_at,
+                       consumed, key_id, operator_signature, revoked
+                FROM approvals WHERE token_id = ?;
+                """,
+                (token_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return {
+                "token_id": row[0],
+                "signature": row[1],
+                "action": row[2],
+                "repository": row[3],
+                "task_id": row[4],
+                "head_sha": row[5],
+                "target_ref": row[6],
+                "argv_digest": row[7],
+                "policy_hash": row[8],
+                "plan_hash": row[9],
+                "approved_by": row[10],
+                "created_at": row[11],
+                "expires_at": row[12],
+                "consumed": bool(row[13]),
+                "key_id": row[14],
+                "operator_signature": row[15],
+                "revoked": bool(row[16]),
+            }
+
     def verify_and_consume_token(
         self,
         token_id: str,

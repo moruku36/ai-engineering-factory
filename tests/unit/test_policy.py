@@ -152,3 +152,17 @@ def test_github_state_publisher_idempotency():
         )
 
 
+def test_evaluate_merge_operation_guardrails(policy):
+    # Automated merge is unconditionally hard-denied
+    with pytest.raises(HardDenyViolationError, match="automated_pr_merge.*strictly prohibited"):
+        policy.evaluate_merge_operation(is_automated=True, has_human_approval=True)
+
+    # Manual merge without approval token is rejected
+    with pytest.raises(ApprovalRequiredError, match="merge_pull_request.*requires explicit"):
+        policy.evaluate_merge_operation(is_automated=False, has_human_approval=False)
+
+    # Manual merge with human approval token succeeds
+    policy.evaluate_merge_operation(is_automated=False, has_human_approval=True)
+
+
+

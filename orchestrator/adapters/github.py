@@ -360,12 +360,19 @@ class RealGitHubStatePublisher:
                             pass
         return reconciled
 
-    def verify_human_merge(self, pr_number: int, expected_head_sha: str) -> dict[str, Any]:
+    def verify_human_merge(
+        self,
+        pr_number: int,
+        expected_head_sha: str,
+        require_human_actor: bool = True,
+        approval_manager: Any | None = None,
+        approval_token_id: str | None = None,
+    ) -> dict[str, Any]:
         """Verify remote GitHub PR state for verified human merge with matching head SHA."""
         cmd = [
             "gh", "pr", "view", str(pr_number),
             "--repo", self.repo_slug,
-            "--json", "number,state,mergedAt,mergeCommit,headRefOid",
+            "--json", "number,state,mergedAt,mergeCommit,headRefOid,mergedBy",
         ]
         res = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if res.returncode != 0:
@@ -391,6 +398,27 @@ class RealGitHubStatePublisher:
                 f"Merged PR #{pr_number} head SHA '{head_oid}' differs from expected '{expected_head_sha}'"
             )
 
+        merged_by = data.get("mergedBy") or {}
+        actor_login = merged_by.get("login", "") if isinstance(merged_by, dict) else str(merged_by)
+        if require_human_actor and actor_login and (
+            actor_login.endswith("[bot]")
+            or actor_login in ("github-actions", "dependabot", "coderabbitai")
+        ):
+            raise GitHubPRError(
+                f"PR #{pr_number} was merged by automated bot '{actor_login}', not a verified human operator"
+            )
+
+        if approval_manager and approval_token_id:
+            token_rec = approval_manager.get_token(approval_token_id)
+            if not token_rec:
+                raise GitHubPRError(f"Approval token '{approval_token_id}' not found in registry")
+            if token_rec["action"] != "merge_pull_request":
+                raise GitHubPRError(f"Approval token action '{token_rec['action']}' is not 'merge_pull_request'")
+            if token_rec["head_sha"] != expected_head_sha:
+                raise GitHubPRError("Approval token head_sha does not match merged PR head SHA")
+            if not token_rec.get("consumed"):
+                raise GitHubPRError(f"Approval token '{approval_token_id}' has not been consumed yet")
+
         merge_commit = data.get("mergeCommit", {})
         oid = merge_commit.get("oid") if isinstance(merge_commit, dict) else merge_commit
 
@@ -400,5 +428,15 @@ class RealGitHubStatePublisher:
             "merged_at": data.get("mergedAt"),
             "merge_commit": oid,
             "head_sha": head_oid,
+            "merged_by": actor_login or "unknown",
         }
+
+    def attempt_automated_merge(self, pr_number: int) -> None:
+        """Attempt automated PR merge - strictly prohibited by Hard Deny policy."""
+        from orchestrator.core.policy import HardDenyViolationError
+        raise HardDenyViolationError(
+            f"Automated merge of PR #{pr_number} is strictly prohibited by Hard Deny policy. "
+            "All merges must be authorized and performed by a verified Human Operator."
+        )
+
 

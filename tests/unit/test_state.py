@@ -129,3 +129,27 @@ def test_base_change_invalidates_candidate(ledger):
     state = ledger.transition(task_id, 4, TaskStatus.READY, "Rebased onto new main", base_sha=new_base_sha)
     assert state["base_sha"] == new_base_sha
     assert state["candidate_digest"] is None  # Candidate invalidated!
+
+
+def test_transition_to_done_requires_human_approval(ledger):
+    from orchestrator.core.policy import ApprovalRequiredError
+
+    task_id = "TASK-007"
+    ledger.initialize_task(task_id, SAMPLE_SPEC_DIGEST, SAMPLE_POLICY_DIGEST, SAMPLE_BASE_SHA)
+    ledger.transition(task_id, 0, TaskStatus.READY, "Ready")
+    ledger.transition(task_id, 1, TaskStatus.RUNNING, "Run")
+    ledger.transition(task_id, 2, TaskStatus.VALIDATING, "Validating", candidate_digest=SAMPLE_CANDIDATE_DIGEST)
+    ledger.transition(task_id, 3, TaskStatus.REVIEW, "Review")
+    ledger.transition(task_id, 4, TaskStatus.READY_FOR_MERGE, "Ready for merge")
+
+    # Fail closed when human approval is required but token is missing
+    with pytest.raises(ApprovalRequiredError, match="human approval token is required before merge"):
+        ledger.transition(task_id, 5, TaskStatus.DONE, "Attempted merge", requires_human_approval=True)
+
+    # Succeeds when valid approval token id is provided
+    done_state = ledger.transition(
+        task_id, 5, TaskStatus.DONE, "Human verified merge",
+        requires_human_approval=True, approval_token_id="tok-approved-123",
+    )
+    assert done_state["status"] == TaskStatus.DONE.value
+

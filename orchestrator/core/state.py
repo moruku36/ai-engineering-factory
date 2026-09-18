@@ -189,6 +189,8 @@ class StateLedger:
         reason: str,
         candidate_digest: str | None = None,
         base_sha: str | None = None,
+        approval_token_id: str | None = None,
+        requires_human_approval: bool = False,
     ) -> dict[str, Any]:
         """Atomically transition task state with cross-process CAS check."""
         with self._global_thread_lock:
@@ -230,6 +232,14 @@ class StateLedger:
                     raise StateTransitionError(
                         f"Invalid transition for task {task_id}: {current_status.value} -> {to_status.value}"
                     )
+
+                if to_status == TaskStatus.DONE and requires_human_approval and not approval_token_id:
+                    conn.execute("ROLLBACK;")
+                    from orchestrator.core.policy import ApprovalRequiredError
+                    raise ApprovalRequiredError(
+                        f"Cannot transition task {task_id} to DONE: human approval token is required before merge"
+                    )
+
 
                 # Handle retry budget check
                 if current_status == TaskStatus.FAILED and to_status == TaskStatus.READY:
