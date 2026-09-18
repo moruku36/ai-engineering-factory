@@ -219,3 +219,53 @@ sequenceDiagram
 | **CI パイプライン** | GitHub Actions (Linux & Windows) | マトリクス実行で全テストと解析が PASS | PR マージブロック |
 | **証跡完全性** | Evidence Bundle Generator | SHA-256 ダイジェストとログ真正性が一致 | 承認トークン無効化 |
 
+---
+
+## 6. Phase Boundary & Phase Contract (フェーズ境界保証)
+
+### 6.1 空間境界 (Spatial) と 時間/意味境界 (Temporal/Semantic)
+- **従来の空間境界 (`allowed_paths`)**: ファイルの変更可能パスを制限する（例: `app/` 配下のみ変更許可）。しかし、「Phase 1の初期ビルダーが、Phase 3で実装すべきセキュリティ修正コードを先取りして実装してしまう」違反を防ぐことはできない。
+- **時間/意味境界 (`phase_contract`)**: 当該フェーズの終了時点で**何を維持しなければならないか (`preserves`)**、および**次フェーズ以降の成果物のうち何を実装してはならないか (`prohibits`)** を機械可読に定義する。
+
+### 6.2 Phase Contract の構成要素
+```yaml
+phase_contract:
+  target_phase: 1
+  preserves:
+    - id: "PRSV-01"
+      statement: "Vulnerable lab state must remain intact"
+      check_type: "command"
+      command_id: "scanner_vulnerable_findings"
+  prohibits:
+    - id: "PROH-01"
+      statement: "Phase 3 security remediations must not be implemented in Phase 1"
+      target_phase: 3
+      check_type: "forbidden_pattern"
+      patterns:
+        - "HARDENED"
+        - "samesite=\"lax\""
+        - "HttpOnly=True"
+      applies_to:
+        - "app/"
+```
+- `IndependentVerifier` は候補差分（Candidate Diff）および成果物を検証し、`prohibits` で指定された後続フェーズのパターン混入や `preserves` の不変条件破壊を検出した場合、即座に `PhaseContractViolationError` を送出して Fail-Closed でブロックする。
+
+---
+
+## 7. Human Merge Boundary & Credential Separation (人手承認と認証情報分離)
+
+### 7.1 4層トラストモデル
+1. **Worker (AI Coding Agent)**: コードの生成・修正・ローカルテスト実行。マージ権限および承認トークン発行・消費権限は持たない。
+2. **Independent Verifier**: テスト結果（JUnit XML）およびフェーズ契約を独立検証し、改ざん不能なダイジェストを算出する。
+3. **Human Operator**: 暗号署名鍵を保持し、PRと検証証跡を確認した上で、ワンタイム承認トークンを発行して手動マージを行う。
+4. **GitHub Transport**: ブランチのPushおよびPR作成を実行。
+
+### 7.2 Credential 分離アーキテクチャ
+同一ホスト環境（WSL/端末）で Worker と Human が同一の GitHub 認証情報（`gh` トークンや PAT）を共有する場合、GitHub 側からは「人間によるマージ」と「AI エージェントが実行した `gh pr merge`」を判別できない。
+- **推奨アーキテクチャ**:
+  - **Worker Credential**: ブランチ Push と PR 作成のみを許可したスコープ限定トークン（Merge 権限なし）。
+  - **Human Operator Credential**: Web UI / Passkey / 2FA 等による人間専用の権限。
+- **Control Plane による二重防護 (Defense-in-Depth)**:
+  - GitHub Ruleset による Direct Push / Force Push / CI 未通過のブロック。
+  - Factory 内部の `StateLedger` および `PolicyEngine` において、`automated_pr_merge` は `HARD_DENY` とし、人間承認トークンが検証・消費されない限りタスク状態は `DONE` に遷移しない。
+
