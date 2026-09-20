@@ -33,8 +33,9 @@ def _run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
     returncode so existing `returncode != 0` checks handle it like any other failure.
     """
     kwargs.setdefault("timeout", _SUBPROCESS_TIMEOUT_SECONDS)
+    check = kwargs.pop("check", False)
     try:
-        return subprocess.run(cmd, **kwargs)
+        return subprocess.run(cmd, check=check, **kwargs)
     except subprocess.TimeoutExpired as exc:
         return subprocess.CompletedProcess(
             cmd,
