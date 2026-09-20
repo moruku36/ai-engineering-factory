@@ -4,7 +4,10 @@ import ctypes
 import os
 import sqlite3
 import time
+from contextlib import closing
 from pathlib import Path
+
+from orchestrator.core.sandbox import _is_process_alive, get_process_creation_time
 
 
 class LeaseAcquisitionError(Exception):
@@ -37,13 +40,10 @@ def is_process_alive(pid: int) -> bool:
             return kernel.WaitForSingleObject(handle, 0) != 0
         finally:
             kernel.CloseHandle(handle)
-    try:
-        os.kill(pid, 0)
-        return True
-    except ProcessLookupError:
-        return False
-    except OSError:
-        return True  # Unknown/access denied is not proof that the process exited.
+    # Delegate to the sandbox controller's liveness probe so a zombie (signalled but
+    # not yet reaped by its real parent) is treated as dead here too, consistently
+    # with how process termination is verified elsewhere.
+    return _is_process_alive(pid)
 
 
 class RuntimeLeaseManager:
@@ -66,7 +66,7 @@ class RuntimeLeaseManager:
         return conn
 
     def _init_db(self) -> None:
-        with self._get_connection() as conn:
+        with closing(self._get_connection()) as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS leases (
@@ -76,10 +76,15 @@ class RuntimeLeaseManager:
                     heartbeat_ts REAL NOT NULL,
                     pid INTEGER NOT NULL,
                     acquired_at REAL NOT NULL,
-                    timeout_seconds REAL NOT NULL
+                    timeout_seconds REAL NOT NULL,
+                    process_start_time REAL NOT NULL DEFAULT 0
                 )
                 """
             )
+            try:
+                conn.execute("ALTER TABLE leases ADD COLUMN process_start_time REAL NOT NULL DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass  # column already present (pre-existing database)
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS lease_epochs (task_id TEXT PRIMARY KEY, epoch INTEGER NOT NULL)"
             )
@@ -94,7 +99,8 @@ class RuntimeLeaseManager:
     ) -> int:
         """Acquire an exclusive lease for task_id. Returns epoch on success."""
         now = time.time()
-        with self._get_connection() as conn:
+        process_start_time = get_process_creation_time(pid)
+        with closing(self._get_connection()) as conn:
             conn.execute("BEGIN IMMEDIATE")
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM leases WHERE task_id = ?", (task_id,))
@@ -124,10 +130,11 @@ class RuntimeLeaseManager:
                 cursor.execute(
                     """
                     UPDATE leases
-                    SET worker_id = ?, epoch = ?, heartbeat_ts = ?, pid = ?, acquired_at = ?, timeout_seconds = ?
+                    SET worker_id = ?, epoch = ?, heartbeat_ts = ?, pid = ?, acquired_at = ?,
+                        timeout_seconds = ?, process_start_time = ?
                     WHERE task_id = ?
                     """,
-                    (worker_id, new_epoch, now, pid, now, timeout_seconds, task_id),
+                    (worker_id, new_epoch, now, pid, now, timeout_seconds, process_start_time, task_id),
                 )
             else:
                 prior = cursor.execute(
@@ -136,10 +143,13 @@ class RuntimeLeaseManager:
                 new_epoch = prior["epoch"] + 1 if prior else 1
                 cursor.execute(
                     """
-                    INSERT INTO leases (task_id, worker_id, epoch, heartbeat_ts, pid, acquired_at, timeout_seconds)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO leases (
+                        task_id, worker_id, epoch, heartbeat_ts, pid, acquired_at,
+                        timeout_seconds, process_start_time
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (task_id, worker_id, new_epoch, now, pid, now, timeout_seconds),
+                    (task_id, worker_id, new_epoch, now, pid, now, timeout_seconds, process_start_time),
                 )
 
             cursor.execute(
@@ -152,7 +162,7 @@ class RuntimeLeaseManager:
     def heartbeat(self, task_id: str, worker_id: str, epoch: int) -> None:
         """Update lease heartbeat timestamp."""
         now = time.time()
-        with self._get_connection() as conn:
+        with closing(self._get_connection()) as conn:
             conn.execute("BEGIN IMMEDIATE")
             cursor = conn.cursor()
             cursor.execute(
@@ -173,7 +183,7 @@ class RuntimeLeaseManager:
 
     def release_lease(self, task_id: str, worker_id: str, epoch: int) -> None:
         """Voluntarily release a lease upon task completion."""
-        with self._get_connection() as conn:
+        with closing(self._get_connection()) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "DELETE FROM leases WHERE task_id = ? AND worker_id = ? AND epoch = ?",
@@ -182,7 +192,7 @@ class RuntimeLeaseManager:
             conn.commit()
 
     def get_active_lease(self, task_id: str) -> dict | None:
-        with self._get_connection() as conn:
+        with closing(self._get_connection()) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM leases WHERE task_id = ?", (task_id,))
             row = cursor.fetchone()

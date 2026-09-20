@@ -123,7 +123,9 @@ def audit(
     print("=== Dependency and Vulnerability Audit Gate ===")
 
     # 1. Run pip check to verify broken requirements or incompatible versions
-    res = subprocess.run([sys.executable, "-m", "pip", "check"], capture_output=True, text=True, check=False)
+    res = subprocess.run(
+        [sys.executable, "-m", "pip", "check"], capture_output=True, text=True, check=False, timeout=60
+    )
     if res.returncode != 0:
         print("DEPENDENCY AUDIT FAILED: Broken dependencies found by pip check:", file=sys.stderr)
         print(res.stdout, file=sys.stderr)

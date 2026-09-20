@@ -274,6 +274,11 @@ def _get_process_creation_time(pid: int) -> float:
         return 0.0
 
 
+def get_process_creation_time(pid: int) -> float:
+    """Public wrapper around the process creation-time probe, for cross-process PID verification."""
+    return _get_process_creation_time(pid)
+
+
 def _is_process_alive(pid: int, proc_handle: Any = None) -> bool:
     """Non-destructive process liveness probe."""
     if proc_handle is not None and hasattr(proc_handle, "poll") and proc_handle.poll() is not None:
@@ -408,8 +413,50 @@ class ProcessTreeController:
 
         if record.proc is not None and hasattr(record.proc, "poll"):
             try:
-                record.proc.poll()
-            except OSError:
+                record.proc.wait(timeout=5.0)
+            except (OSError, subprocess.TimeoutExpired):
                 pass
+        else:
+            time.sleep(0.1)
 
-        time.sleep(0.1)
+    def terminate_external(self, pid: int, start_time: float, timeout: float = 5.0) -> bool:
+        """Terminate a process (and its process group) not spawned by this controller instance.
+
+        Used to cancel a worker owned by a separate process invocation (e.g. a CLI process
+        cancelling a previously-dispatched worker), identity-verified against the process
+        creation time recorded when its lease was acquired to guard against PID reuse.
+        Returns True once the process is confirmed terminated (or was already dead).
+        """
+        if not _is_process_alive(pid):
+            return True
+
+        current_time = _get_process_creation_time(pid)
+        if start_time and current_time and current_time != start_time:
+            raise ProcessOwnershipError(
+                f"Process ownership verification failed: PID {pid} creation time mismatch "
+                "(suspected PID reuse)"
+            )
+
+        if sys.platform == "win32":
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(pid)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+                timeout=timeout,
+            )
+        else:
+            try:
+                os.killpg(pid, 9)
+            except OSError:
+                try:
+                    os.kill(pid, 9)
+                except OSError:
+                    pass
+
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if not _is_process_alive(pid):
+                return True
+            time.sleep(0.1)
+        return not _is_process_alive(pid)

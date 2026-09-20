@@ -6,6 +6,7 @@ import json
 import os
 import secrets
 import sqlite3
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -79,7 +80,7 @@ class ApprovalManager:
         return conn
 
     def _init_db(self) -> None:
-        with self._get_connection() as conn:
+        with closing(self._get_connection()) as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS approvals (
@@ -159,7 +160,7 @@ class ApprovalManager:
         signature = _compute_token_signature(token_data, self._secret_key)
 
         # Store in SQLite transactional ledger
-        with self._get_connection() as conn:
+        with closing(self._get_connection()) as conn:
             conn.execute("BEGIN IMMEDIATE;")
             conn.execute(
                 """
@@ -241,7 +242,7 @@ class ApprovalManager:
         validate_against_schema(token_data, "approval.schema.json")
         signature = _compute_token_signature(token_data, self._secret_key)
 
-        with self._get_connection() as conn:
+        with closing(self._get_connection()) as conn:
             conn.execute("BEGIN IMMEDIATE;")
             conn.execute(
                 """
@@ -283,7 +284,7 @@ class ApprovalManager:
     def revoke_token(self, token_id: str, reason: str = "") -> None:
         """Revoke an approval token, preventing any future consumption."""
         now_iso = datetime.now(UTC).isoformat()
-        with self._get_connection() as conn:
+        with closing(self._get_connection()) as conn:
             conn.execute("BEGIN IMMEDIATE;")
             cursor = conn.execute("SELECT consumed, revoked FROM approvals WHERE token_id = ?;", (token_id,))
             row = cursor.fetchone()
@@ -311,12 +312,12 @@ class ApprovalManager:
                 with open(temp_path, "w", encoding="utf-8") as f:
                     json.dump(data, f, indent=2)
                 os.replace(temp_path, token_path)
-            except OSError:
+            except (OSError, json.JSONDecodeError, KeyError):
                 pass
 
     def get_token(self, token_id: str) -> dict[str, Any] | None:
         """Query token record by token_id from approvals database."""
-        with self._get_connection() as conn:
+        with closing(self._get_connection()) as conn:
             cursor = conn.execute(
                 """
                 SELECT token_id, signature, action, repository, task_id, head_sha, target_ref,
@@ -362,7 +363,7 @@ class ApprovalManager:
         plan_hash: str | None = None,
     ) -> dict[str, Any]:
         """Cryptographically verify all bindings of an already-consumed approval token without double-consuming."""
-        with self._get_connection() as conn:
+        with closing(self._get_connection()) as conn:
             cursor = conn.execute(
                 """
                 SELECT token_id, signature, action, repository, task_id, head_sha, target_ref,
@@ -458,7 +459,7 @@ class ApprovalManager:
         plan_hash: str,
     ) -> None:
         """Verify all bound attributes, signature, expiry, and consume atomically across processes."""
-        with self._get_connection() as conn:
+        with closing(self._get_connection()) as conn:
             conn.execute("BEGIN IMMEDIATE;")
             cursor = conn.execute(
                 "SELECT token_id, signature, action, repository, task_id, head_sha, target_ref, "
@@ -596,7 +597,7 @@ class ApprovalManager:
                 with open(temp_path, "w", encoding="utf-8") as f:
                     json.dump(data, f, indent=2)
                 os.replace(temp_path, token_path)
-            except OSError:
+            except (OSError, json.JSONDecodeError, KeyError):
                 pass
 
 

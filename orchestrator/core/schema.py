@@ -174,7 +174,9 @@ class EnvironmentCapabilityProbe:
         # Git
         git_path = shutil.which("git")
         if git_path:
-            git_res = subprocess.run([git_path, "--version"], capture_output=True, text=True, check=False)
+            git_res = subprocess.run(
+                [git_path, "--version"], capture_output=True, text=True, check=False, timeout=15
+            )
             git_ver = git_res.stdout.strip() if git_res.returncode == 0 else None
             git_info = {
                 "status": CapabilityStatus.VERIFIED if git_ver else CapabilityStatus.UNAVAILABLE,
@@ -187,8 +189,13 @@ class EnvironmentCapabilityProbe:
         # GitHub CLI (gh)
         gh_path = shutil.which("gh")
         if gh_path:
-            gh_res = subprocess.run([gh_path, "auth", "status"], capture_output=True, text=True, check=False)
-            is_auth = gh_res.returncode == 0
+            try:
+                gh_res = subprocess.run(
+                    [gh_path, "auth", "status"], capture_output=True, text=True, check=False, timeout=30
+                )
+                is_auth = gh_res.returncode == 0
+            except subprocess.TimeoutExpired:
+                is_auth = False
             gh_info = {
                 "status": CapabilityStatus.VERIFIED if is_auth else CapabilityStatus.MANUAL_ONLY,
                 "authenticated": is_auth,

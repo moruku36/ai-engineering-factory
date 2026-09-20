@@ -30,7 +30,8 @@ def _parse_github_repository(remote: str) -> str | None:
 def _detect_github_repository() -> str | None:
     """Detect the current GitHub owner/repository without repo-specific defaults."""
     env_repo = os.environ.get("GITHUB_REPOSITORY", "").strip()
-    if len(env_repo.split("/")) == 2:
+    env_parts = env_repo.split("/")
+    if len(env_parts) == 2 and all(env_parts):
         return env_repo
 
     try:
@@ -39,6 +40,7 @@ def _detect_github_repository() -> str | None:
             capture_output=True,
             text=True,
             check=True,
+            timeout=30,
         ).stdout.strip()
     except (subprocess.SubprocessError, OSError):
         return None
@@ -60,7 +62,7 @@ def _path_is_inside_git_repo(path: Path) -> bool:
         probe = parent
     result = subprocess.run(
         ["git", "-C", str(probe), "rev-parse", "--is-inside-work-tree"],
-        capture_output=True, text=True, check=False,
+        capture_output=True, text=True, check=False, timeout=30,
     )
     return result.returncode == 0 and result.stdout.strip() == "true"
 
@@ -69,7 +71,7 @@ def _add_to_git_exclude(repo_cwd: Path, entries: set[str]) -> bool:
     """Append entries to the target repo's .git/info/exclude (never its tracked .gitignore)."""
     git_dir_res = subprocess.run(
         ["git", "-C", str(repo_cwd), "rev-parse", "--git-dir"],
-        capture_output=True, text=True, check=False,
+        capture_output=True, text=True, check=False, timeout=30,
     )
     if git_dir_res.returncode != 0:
         return False
@@ -225,7 +227,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     # Git
     try:
         git_ver = subprocess.run(
-            ["git", "--version"], capture_output=True, text=True, check=True
+            ["git", "--version"], capture_output=True, text=True, check=True, timeout=30
         ).stdout.strip()
         print(f"[*] Git: {git_ver} (OK)")
     except (subprocess.SubprocessError, OSError) as e:
@@ -248,6 +250,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                 capture_output=True,
                 text=True,
                 check=False,
+                timeout=30,
             )
             if res.returncode == 0:
                 is_protected = res.stdout.strip()
@@ -344,7 +347,7 @@ def cmd_approve(args: argparse.Namespace) -> int:
 def cmd_cancel(args: argparse.Namespace) -> int:
     """Cancel a task and release its lease after strictly verifying worker termination."""
     from orchestrator.core.lease import LeaseExpiredError, RuntimeLeaseManager, is_process_alive
-    from orchestrator.core.sandbox import ProcessTreeController
+    from orchestrator.core.sandbox import ProcessOwnershipError, ProcessTreeController
 
     ledger = StateLedger(args.state_dir)
     state = ledger.get_state(args.task_id)
@@ -362,7 +365,13 @@ def cmd_cancel(args: argparse.Namespace) -> int:
         pid = active_lease["pid"]
         if is_process_alive(pid):
             controller = ProcessTreeController()
-            terminated = controller.terminate_tree({"pid": pid, "start_time": active_lease.get("heartbeat_ts", 0.0)})
+            try:
+                terminated = controller.terminate_external(
+                    pid, active_lease.get("process_start_time", 0.0)
+                )
+            except ProcessOwnershipError as e:
+                print(f"Cancellation blocked: {e}")
+                return 2
             if not terminated or is_process_alive(pid):
                 print(f"Cancellation blocked: active worker termination of PID {pid} could not be confirmed.")
                 return 2

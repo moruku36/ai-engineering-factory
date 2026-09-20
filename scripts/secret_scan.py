@@ -21,6 +21,7 @@ def run_git_command(args: list[str]) -> str:
         encoding="utf-8",
         errors="replace",
         check=False,
+        timeout=60,
     )
     if res.returncode != 0:
         raise RuntimeError(f"Git command failed (exit code {res.returncode}): {' '.join(args)}\n{res.stderr}")
@@ -50,6 +51,7 @@ def scan_all() -> int:
             encoding="utf-8",
             errors="replace",
             check=False,
+            timeout=30,
         )
         if res.returncode == 0:
             diff_range = "origin/main...HEAD"
@@ -65,7 +67,7 @@ def scan_all() -> int:
         # equals HEAD. Never skip the test directory or an entire fixture line.
         tree = subprocess.run(
             ["git", "grep", "-I", "-n", "-E", "ghp_|gho_|github_pat_|AKIA|BEGIN .*PRIVATE KEY", "HEAD"],
-            capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", check=False, timeout=60,
         )
         if tree.returncode not in (0, 1):
             raise RuntimeError("Failed to inspect the tracked HEAD tree")
