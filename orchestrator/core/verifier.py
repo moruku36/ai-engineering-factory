@@ -259,6 +259,30 @@ class IndependentVerifier:
                 return True
         return False
 
+    @staticmethod
+    def _collect_candidate_paths(
+        changed_paths: list[str],
+        cand_contents: dict[str, str] | None,
+        target_dir: Path | None,
+    ) -> set[str]:
+        """Union of known changed/collected paths and every file actually present on disk.
+
+        Preserves-checks must see the full candidate state, not just the diff: a file
+        removed from changed_paths but still present on disk (or vice versa) must not
+        be silently skipped.
+        """
+        paths: set[str] = set(changed_paths)
+        if cand_contents:
+            paths.update(cand_contents.keys())
+        if target_dir and target_dir.exists():
+            for f in target_dir.rglob("*"):
+                if f.is_file():
+                    try:
+                        paths.add(str(f.relative_to(target_dir)).replace("\\", "/"))
+                    except ValueError:
+                        pass
+        return paths
+
     def verify_phase_contract(
         self,
         phase_contract: dict[str, Any],
@@ -411,17 +435,7 @@ class IndependentVerifier:
             applies_to = rule.get("applies_to")
 
             if check_type == "forbidden_pattern":
-                paths_to_check = set(changed_paths)
-                if cand_contents:
-                    paths_to_check.update(cand_contents.keys())
-                if target_dir and target_dir.exists():
-                    for f in target_dir.rglob("*"):
-                        if f.is_file():
-                            try:
-                                rel = str(f.relative_to(target_dir)).replace("\\", "/")
-                                paths_to_check.add(rel)
-                            except ValueError:
-                                pass
+                paths_to_check = self._collect_candidate_paths(changed_paths, cand_contents, target_dir)
                 for path in sorted(paths_to_check):
                     if not self._path_matches_rules(path, applies_to):
                         continue
@@ -434,18 +448,7 @@ class IndependentVerifier:
                             )
 
             elif check_type == "required_pattern":
-                candidate_all_files: set[str] = set(changed_paths)
-                if cand_contents:
-                    candidate_all_files.update(cand_contents.keys())
-                if target_dir and target_dir.exists():
-                    for f in target_dir.rglob("*"):
-                        if f.is_file():
-                            try:
-                                rel = str(f.relative_to(target_dir)).replace("\\", "/")
-                                candidate_all_files.add(rel)
-                            except ValueError:
-                                pass
-
+                candidate_all_files = self._collect_candidate_paths(changed_paths, cand_contents, target_dir)
                 applicable_files = [p for p in sorted(candidate_all_files) if self._path_matches_rules(p, applies_to)]
                 if not applicable_files:
                     raise PhaseContractViolationError(

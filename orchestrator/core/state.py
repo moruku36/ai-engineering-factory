@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from orchestrator.core.schema import validate_against_schema
+from orchestrator.core.sqlite_util import connect_wal
 
 
 class TaskStatus(str, Enum):
@@ -94,10 +95,7 @@ class StateLedger:
         self._init_db()
 
     def _get_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self.db_path), timeout=30.0, isolation_level=None)
-        conn.execute("PRAGMA journal_mode=WAL;")
-        conn.execute("PRAGMA busy_timeout=30000;")
-        return conn
+        return connect_wal(self.db_path)
 
     def _init_db(self) -> None:
         with closing(self._get_connection()) as conn:

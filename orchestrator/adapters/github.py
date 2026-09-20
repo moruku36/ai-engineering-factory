@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from orchestrator.core.policy import PolicyEngine
+from orchestrator.core.sqlite_util import connect_wal
 
 
 class GitHubPublishError(Exception):
@@ -67,9 +68,7 @@ class RealGitHubStatePublisher:
         self._init_db()
 
     def _get_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self.db_path), timeout=30.0, isolation_level=None)
-        conn.execute("PRAGMA journal_mode=WAL;")
-        return conn
+        return connect_wal(self.db_path, busy_timeout_ms=None)
 
     def _init_db(self) -> None:
         with closing(self._get_connection()) as conn:
@@ -382,11 +381,8 @@ class RealGitHubStatePublisher:
                             pass
         return reconciled
 
-    def get_pr_merge_status(
-        self,
-        pr_number: int,
-    ) -> dict[str, Any]:
-        """Read-only query of remote GitHub PR merge status without approval or human actor gate."""
+    def _fetch_pr_view(self, pr_number: int) -> dict[str, Any]:
+        """Query gh pr view for merge-status fields and parse the JSON response."""
         cmd = [
             "gh", "pr", "view", str(pr_number),
             "--repo", self.repo_slug,
@@ -397,9 +393,16 @@ class RealGitHubStatePublisher:
             raise GitHubPRError(f"Failed to query PR #{pr_number} status from GitHub: {res.stderr}")
 
         try:
-            data = json.loads(res.stdout)
+            return json.loads(res.stdout)
         except json.JSONDecodeError as exc:
             raise GitHubPRError(f"Invalid JSON response from gh pr view #{pr_number}") from exc
+
+    def get_pr_merge_status(
+        self,
+        pr_number: int,
+    ) -> dict[str, Any]:
+        """Read-only query of remote GitHub PR merge status without approval or human actor gate."""
+        data = self._fetch_pr_view(pr_number)
 
         state = data.get("state")
         head_oid = data.get("headRefOid")
@@ -458,19 +461,7 @@ class RealGitHubStatePublisher:
         except ApprovalVerificationError as exc:
             raise GitHubPRError(f"Approval token verification failed for PR #{pr_number} merge: {exc}") from exc
 
-        cmd = [
-            "gh", "pr", "view", str(pr_number),
-            "--repo", self.repo_slug,
-            "--json", "number,state,mergedAt,mergeCommit,headRefOid,mergedBy",
-        ]
-        res = _run(cmd, capture_output=True, text=True, check=False)
-        if res.returncode != 0:
-            raise GitHubPRError(f"Failed to query PR #{pr_number} status from GitHub: {res.stderr}")
-
-        try:
-            data = json.loads(res.stdout)
-        except json.JSONDecodeError as exc:
-            raise GitHubPRError(f"Invalid JSON response from gh pr view #{pr_number}") from exc
+        data = self._fetch_pr_view(pr_number)
 
         state = data.get("state")
         head_oid = data.get("headRefOid")

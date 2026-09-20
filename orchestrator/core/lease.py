@@ -8,6 +8,7 @@ from contextlib import closing
 from pathlib import Path
 
 from orchestrator.core.sandbox import _is_process_alive, get_process_creation_time
+from orchestrator.core.sqlite_util import connect_exclusive
 
 
 class LeaseAcquisitionError(Exception):
@@ -61,9 +62,7 @@ class RuntimeLeaseManager:
         self._init_db()
 
     def _get_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self.db_path), timeout=10.0, isolation_level="EXCLUSIVE")
-        conn.row_factory = sqlite3.Row
-        return conn
+        return connect_exclusive(self.db_path)
 
     def _init_db(self) -> None:
         with closing(self._get_connection()) as conn:
