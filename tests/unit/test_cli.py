@@ -113,10 +113,13 @@ def test_cli_approve_authenticated_success(tmp_path, capsys, monkeypatch):
     assert "Approval token issued: tok-" in captured.out
 
 
-def test_cli_cancel_running_task_with_confirmed_termination(tmp_path, capsys, monkeypatch):
-    from unittest.mock import MagicMock
+def test_cli_cancel_running_task_with_confirmed_termination(tmp_path, capsys):
+    """End-to-end: spawn a real long-running child process, cancel it via the CLI,
+    and confirm the CLI actually kills it (not a mocked termination)."""
+    import subprocess
+    import time
 
-    from orchestrator.core.lease import RuntimeLeaseManager
+    from orchestrator.core.lease import RuntimeLeaseManager, is_process_alive
 
     state_dir = tmp_path / "tasks"
     ledger = StateLedger(state_dir)
@@ -124,26 +127,77 @@ def test_cli_cancel_running_task_with_confirmed_termination(tmp_path, capsys, mo
     ledger.transition("RUN-001", 0, TaskStatus.READY, "preflight")
     ledger.transition("RUN-001", 1, TaskStatus.RUNNING, "dispatched")
 
-    lease_db = tmp_path / "leases.sqlite"
-    lm = RuntimeLeaseManager(db_path=lease_db)
-    lm.acquire_lease("RUN-001", "worker-RUN-001", pid=999999, timeout_seconds=60)
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    try:
+        lease_db = tmp_path / "leases.sqlite"
+        lm = RuntimeLeaseManager(db_path=lease_db)
+        lm.acquire_lease("RUN-001", "worker-RUN-001", pid=child.pid, timeout_seconds=60)
 
-    # Mock process liveness and termination
-    monkeypatch.setattr("orchestrator.core.lease.is_process_alive", lambda pid: False)
-    mock_term = MagicMock(return_value=True)
-    monkeypatch.setattr("orchestrator.core.sandbox.ProcessTreeController.terminate_tree", mock_term)
+        assert is_process_alive(child.pid)
 
-    sys.argv = [
-        "orchestrator.cli", "cancel",
-        "--task-id", "RUN-001",
-        "--state-dir", str(state_dir),
-        "--lease-db", str(lease_db),
-    ]
-    exit_code = main()
-    assert exit_code == 0
-    captured = capsys.readouterr()
-    assert "transitioned to CANCELLED" in captured.out
-    assert ledger.get_state("RUN-001")["status"] == TaskStatus.CANCELLED.value
+        sys.argv = [
+            "orchestrator.cli", "cancel",
+            "--task-id", "RUN-001",
+            "--state-dir", str(state_dir),
+            "--lease-db", str(lease_db),
+        ]
+        exit_code = main()
+        captured = capsys.readouterr()
+        assert exit_code == 0, captured.out
+        assert "transitioned to CANCELLED" in captured.out
+        assert ledger.get_state("RUN-001")["status"] == TaskStatus.CANCELLED.value
+
+        # Give the OS a moment to reap; the CLI already confirmed termination above.
+        for _ in range(20):
+            if not is_process_alive(child.pid):
+                break
+            time.sleep(0.1)
+        assert not is_process_alive(child.pid)
+    finally:
+        if child.poll() is None:
+            child.kill()
+        child.wait(timeout=5)
+
+
+def test_cli_cancel_running_task_pid_reused_blocks_cancellation(tmp_path, capsys, monkeypatch):
+    """A lease whose recorded process_start_time no longer matches the live PID's
+    creation time (i.e. the PID was reused by an unrelated process) must not be
+    terminated -- the CLI should block rather than kill the wrong process."""
+    import subprocess
+
+    from orchestrator.core.lease import RuntimeLeaseManager
+
+    state_dir = tmp_path / "tasks"
+    ledger = StateLedger(state_dir)
+    ledger.initialize_task("RUN-002", "a" * 64, "b" * 64)
+    ledger.transition("RUN-002", 0, TaskStatus.READY, "preflight")
+    ledger.transition("RUN-002", 1, TaskStatus.RUNNING, "dispatched")
+
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    try:
+        lease_db = tmp_path / "leases.sqlite"
+        lm = RuntimeLeaseManager(db_path=lease_db)
+        lm.acquire_lease("RUN-002", "worker-RUN-002", pid=child.pid, timeout_seconds=60)
+
+        # Simulate PID reuse: the stored creation time no longer matches the live process.
+        monkeypatch.setattr(
+            "orchestrator.core.sandbox._get_process_creation_time",
+            lambda pid: 999999999.0,
+        )
+
+        sys.argv = [
+            "orchestrator.cli", "cancel",
+            "--task-id", "RUN-002",
+            "--state-dir", str(state_dir),
+            "--lease-db", str(lease_db),
+        ]
+        exit_code = main()
+        captured = capsys.readouterr()
+        assert exit_code == 2
+        assert "Cancellation blocked" in captured.out
+    finally:
+        child.kill()
+        child.wait(timeout=5)
 
 
 def test_cli_init_creates_runtime_root_and_local_config(tmp_path, monkeypatch, capsys):

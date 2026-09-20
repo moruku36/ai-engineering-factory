@@ -106,7 +106,7 @@ def snapshot_worktree(worktree_dir: Path | str, dest_dir: Path | str) -> tuple[P
 
     result = subprocess.run(
         ["git", "ls-files", "-z", "--cached", "--exclude-standard"],
-        cwd=str(src), capture_output=True, check=False,
+        cwd=str(src), capture_output=True, check=False, timeout=60,
     )
     if result.returncode != 0:
         raise RuntimeError(
@@ -155,7 +155,7 @@ def compute_base_file_digests(
     repo = Path(repo_root).resolve()
     listing = subprocess.run(
         ["git", "ls-tree", "-r", "--name-only", "-z", base_sha],
-        cwd=str(repo), capture_output=True, check=False,
+        cwd=str(repo), capture_output=True, check=False, timeout=60,
     )
     if listing.returncode != 0:
         raise RuntimeError(
@@ -176,7 +176,7 @@ def compute_base_file_digests(
         clean_rel = sanitize_relative_path(rel)
         show = subprocess.run(
             ["git", "show", f"{base_sha}:{rel}"],
-            cwd=str(repo), capture_output=True, check=False,
+            cwd=str(repo), capture_output=True, check=False, timeout=30,
         )
         if show.returncode != 0:
             # E.g. a submodule gitlink entry with no blob content; skip rather than
@@ -212,7 +212,9 @@ class WorktreeManager:
             str(worktree_path),
             base_ref,
         ]
-        result = subprocess.run(cmd, cwd=str(self.repo_root), capture_output=True, text=True, check=False)
+        result = subprocess.run(
+            cmd, cwd=str(self.repo_root), capture_output=True, text=True, check=False, timeout=60
+        )
         if result.returncode != 0:
             raise RuntimeError(f"Failed to create git worktree: {result.stderr.strip()}")
 
@@ -223,14 +225,18 @@ class WorktreeManager:
         worktree_path = self.worktrees_dir / task_id
         if worktree_path.exists():
             cmd = ["git", "worktree", "remove", "--force", str(worktree_path)]
-            subprocess.run(cmd, cwd=str(self.repo_root), capture_output=True, text=True, check=False)
+            subprocess.run(
+                cmd, cwd=str(self.repo_root), capture_output=True, text=True, check=False, timeout=60
+            )
             if worktree_path.exists():
                 shutil.rmtree(worktree_path, ignore_errors=True)
 
     def check_dirty_status(self, worktree_path: Path) -> tuple[bool, list[str]]:
         """Check whether worktree has uncommitted modifications and return changed paths."""
         cmd = ["git", "status", "--porcelain"]
-        res = subprocess.run(cmd, cwd=str(worktree_path), capture_output=True, text=True, check=False)
+        res = subprocess.run(
+            cmd, cwd=str(worktree_path), capture_output=True, text=True, check=False, timeout=30
+        )
         if res.returncode != 0:
             raise RuntimeError(f"Failed to inspect git status: {res.stderr.strip()}")
 

@@ -7,6 +7,7 @@ test execution outputs, and invalidates review/approval evidence when candidate 
 import difflib
 import fnmatch
 import hashlib
+import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from enum import Enum
@@ -107,8 +108,9 @@ class IndependentVerifier:
 
         out_lower = output.lower()
         if "error" in out_lower or "failed" in out_lower or "traceback" in out_lower:
-            # Check if it was purely a summary of 0 failures
-            if "0 failed" in out_lower or "0 errors" in out_lower:
+            # Check if it was purely a summary of 0 failures/errors (e.g. "0 failed",
+            # not "10 failed" -- word-boundary match so digit counts aren't swallowed)
+            if re.search(r"(?<!\d)0 (failed|errors?)\b", out_lower):
                 return True, "Tests passed (verified zero failures in summary)"
             return False, "Failure or traceback indicators detected in test log"
 
@@ -257,6 +259,30 @@ class IndependentVerifier:
                 return True
         return False
 
+    @staticmethod
+    def _collect_candidate_paths(
+        changed_paths: list[str],
+        cand_contents: dict[str, str] | None,
+        target_dir: Path | None,
+    ) -> set[str]:
+        """Union of known changed/collected paths and every file actually present on disk.
+
+        Preserves-checks must see the full candidate state, not just the diff: a file
+        removed from changed_paths but still present on disk (or vice versa) must not
+        be silently skipped.
+        """
+        paths: set[str] = set(changed_paths)
+        if cand_contents:
+            paths.update(cand_contents.keys())
+        if target_dir and target_dir.exists():
+            for f in target_dir.rglob("*"):
+                if f.is_file():
+                    try:
+                        paths.add(str(f.relative_to(target_dir)).replace("\\", "/"))
+                    except ValueError:
+                        pass
+        return paths
+
     def verify_phase_contract(
         self,
         phase_contract: dict[str, Any],
@@ -317,7 +343,7 @@ class IndependentVerifier:
                     import subprocess
                     show = subprocess.run(
                         ["git", "show", f"{base_sha}:{rel_p}"],
-                        cwd=str(target_dir), capture_output=True, text=True, check=False,
+                        cwd=str(target_dir), capture_output=True, text=True, check=False, timeout=30,
                     )
                     if show.returncode == 0:
                         b_contents[rel_p] = show.stdout
@@ -409,17 +435,7 @@ class IndependentVerifier:
             applies_to = rule.get("applies_to")
 
             if check_type == "forbidden_pattern":
-                paths_to_check = set(changed_paths)
-                if cand_contents:
-                    paths_to_check.update(cand_contents.keys())
-                if target_dir and target_dir.exists():
-                    for f in target_dir.rglob("*"):
-                        if f.is_file():
-                            try:
-                                rel = str(f.relative_to(target_dir)).replace("\\", "/")
-                                paths_to_check.add(rel)
-                            except ValueError:
-                                pass
+                paths_to_check = self._collect_candidate_paths(changed_paths, cand_contents, target_dir)
                 for path in sorted(paths_to_check):
                     if not self._path_matches_rules(path, applies_to):
                         continue
@@ -432,19 +448,13 @@ class IndependentVerifier:
                             )
 
             elif check_type == "required_pattern":
-                candidate_all_files: set[str] = set(changed_paths)
-                if cand_contents:
-                    candidate_all_files.update(cand_contents.keys())
-                if target_dir and target_dir.exists():
-                    for f in target_dir.rglob("*"):
-                        if f.is_file():
-                            try:
-                                rel = str(f.relative_to(target_dir)).replace("\\", "/")
-                                candidate_all_files.add(rel)
-                            except ValueError:
-                                pass
-
+                candidate_all_files = self._collect_candidate_paths(changed_paths, cand_contents, target_dir)
                 applicable_files = [p for p in sorted(candidate_all_files) if self._path_matches_rules(p, applies_to)]
+                if not applicable_files:
+                    raise PhaseContractViolationError(
+                        f"Phase preservation invariant violated: no files matched applies_to "
+                        f"for rule '{rule_id}' ({statement}); cannot confirm required pattern(s) are present"
+                    )
                 for pat in patterns:
                     found = False
                     for path in applicable_files:
@@ -452,7 +462,7 @@ class IndependentVerifier:
                         if pat in content:
                             found = True
                             break
-                    if not found and applicable_files:
+                    if not found:
                         raise PhaseContractViolationError(
                             f"Phase preservation invariant violated: required pattern '{pat}' "
                             f"not found in candidate state (rule '{rule_id}': {statement})"

@@ -23,8 +23,6 @@
 
 ## 1. システムアーキテクチャ全体像
 
-![AI Engineering Factory Architecture](docs/assets/architecture.jpg)
-
 AI Engineering Factory は、自律型 AI エージェントのエンジニアリング作業を、決定論的かつ安全に管理するためのオーケストレーション基盤です。
 
 ### 全体データフロー & コンポーネント関連図

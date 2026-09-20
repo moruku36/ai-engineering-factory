@@ -5,11 +5,13 @@ import re
 import sqlite3
 import subprocess
 import uuid
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from orchestrator.core.policy import PolicyEngine
+from orchestrator.core.sqlite_util import connect_wal
 
 
 class GitHubPublishError(Exception):
@@ -18,6 +20,29 @@ class GitHubPublishError(Exception):
 
 class GitHubPRError(Exception):
     """Raised when GitHub PR query or creation fails."""
+
+
+_SUBPROCESS_TIMEOUT_SECONDS = 120
+
+
+def _run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
+    """subprocess.run wrapper with a mandatory timeout.
+
+    A hung `git`/`gh` invocation (stalled network, auth prompt) would otherwise block
+    the control plane indefinitely. A timeout is surfaced as a synthetic non-zero
+    returncode so existing `returncode != 0` checks handle it like any other failure.
+    """
+    kwargs.setdefault("timeout", _SUBPROCESS_TIMEOUT_SECONDS)
+    check = kwargs.pop("check", False)
+    try:
+        return subprocess.run(cmd, check=check, **kwargs)
+    except subprocess.TimeoutExpired as exc:
+        return subprocess.CompletedProcess(
+            cmd,
+            returncode=124,
+            stdout=exc.stdout or "",
+            stderr=(exc.stderr or "") + f"\nCommand timed out after {kwargs['timeout']}s",
+        )
 
 
 class RealGitHubStatePublisher:
@@ -44,12 +69,10 @@ class RealGitHubStatePublisher:
         self._init_db()
 
     def _get_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self.db_path), timeout=30.0, isolation_level=None)
-        conn.execute("PRAGMA journal_mode=WAL;")
-        return conn
+        return connect_wal(self.db_path, busy_timeout_ms=None)
 
     def _init_db(self) -> None:
-        with self._get_connection() as conn:
+        with closing(self._get_connection()) as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS operations (
@@ -79,7 +102,7 @@ class RealGitHubStatePublisher:
         details: str | None = None,
     ) -> None:
         now_iso = datetime.now(UTC).isoformat()
-        with self._get_connection() as conn:
+        with closing(self._get_connection()) as conn:
             conn.execute(
                 """
                 INSERT INTO operations (
@@ -99,7 +122,7 @@ class RealGitHubStatePublisher:
         details: str | None = None,
     ) -> None:
         now_iso = datetime.now(UTC).isoformat()
-        with self._get_connection() as conn:
+        with closing(self._get_connection()) as conn:
             conn.execute(
                 """
                 UPDATE operations
@@ -137,7 +160,7 @@ class RealGitHubStatePublisher:
         self.policy_engine.evaluate_git_operation(target_branch, "push", is_force=is_force)
         self._validate_branch(target_branch)
         # Verify the push destination, not merely the fetch URL or a default slug.
-        destination = subprocess.run(
+        destination = _run(
             ["git", "remote", "get-url", "--push", "--all", "origin"],
             cwd=str(root), capture_output=True, text=True, check=False, timeout=30,
         )
@@ -150,7 +173,7 @@ class RealGitHubStatePublisher:
             raise GitHubPublishError("Origin push destination does not match the approved repository")
 
         # 1. Get local HEAD SHA
-        local_sha_res = subprocess.run(
+        local_sha_res = _run(
             ["git", "rev-parse", "HEAD"],
             cwd=str(root),
             capture_output=True,
@@ -169,13 +192,13 @@ class RealGitHubStatePublisher:
         # 2. Push to remote
         push_cmd = ["git", "push", "origin", f"{local_sha}:refs/heads/{target_branch}"]
 
-        push_res = subprocess.run(push_cmd, cwd=str(root), capture_output=True, text=True, check=False)
+        push_res = _run(push_cmd, cwd=str(root), capture_output=True, text=True, check=False)
         if push_res.returncode != 0:
             self._confirm_operation(op_id, "FAILED", details=push_res.stderr)
             raise GitHubPublishError(f"git push failed: {push_res.stderr}")
 
         # 3. Verify remote ref matches local SHA
-        ls_res = subprocess.run(
+        ls_res = _run(
             ["git", "ls-remote", urls[0], f"refs/heads/{target_branch}"],
             cwd=str(root),
             capture_output=True,
@@ -238,28 +261,27 @@ class RealGitHubStatePublisher:
             "--json",
             "number,url,headRefOid,state,title",
         ]
-        list_res = subprocess.run(list_cmd, capture_output=True, text=True, check=False)
+        list_res = _run(list_cmd, capture_output=True, text=True, check=False)
         if list_res.returncode != 0:
             self._confirm_operation(op_id, "FAILED", details="PR lookup failed")
             raise GitHubPRError("PR lookup failed; refusing an uncertain create")
-        if list_res.returncode == 0:
-            try:
-                prs = json.loads(list_res.stdout)
-                if not isinstance(prs, list):
-                    self._confirm_operation(op_id, "FAILED", details="Malformed response")
-                    raise GitHubPRError("PR lookup returned a malformed response")
-                if prs:
-                    existing = prs[0]
-                    record = {
-                        **self._verified_pr(existing),
-                        "reused": True,
-                    }
-                    self._confirm_operation(op_id, "REUSED", pr_number=record["number"], pr_url=record["url"])
-                    self.journal.append({"op_id": op_id, "action": "pr_reused", **record})
-                    return record
-            except (json.JSONDecodeError, KeyError, IndexError, TypeError) as exc:
-                self._confirm_operation(op_id, "FAILED", details="Malformed evidence")
-                raise GitHubPRError("PR lookup returned malformed evidence; refusing create") from exc
+        try:
+            prs = json.loads(list_res.stdout)
+            if not isinstance(prs, list):
+                self._confirm_operation(op_id, "FAILED", details="Malformed response")
+                raise GitHubPRError("PR lookup returned a malformed response")
+            if prs:
+                existing = prs[0]
+                record = {
+                    **self._verified_pr(existing),
+                    "reused": True,
+                }
+                self._confirm_operation(op_id, "REUSED", pr_number=record["number"], pr_url=record["url"])
+                self.journal.append({"op_id": op_id, "action": "pr_reused", **record})
+                return record
+        except (json.JSONDecodeError, KeyError, IndexError, TypeError) as exc:
+            self._confirm_operation(op_id, "FAILED", details="Malformed evidence")
+            raise GitHubPRError("PR lookup returned malformed evidence; refusing create") from exc
 
         # 2. Create new PR
         create_cmd = [
@@ -277,10 +299,10 @@ class RealGitHubStatePublisher:
             "--body",
             body,
         ]
-        create_res = subprocess.run(create_cmd, capture_output=True, text=True, check=False)
+        create_res = _run(create_cmd, capture_output=True, text=True, check=False)
         if create_res.returncode != 0:
             # Check again in case it was created concurrently or timed out
-            retry_list = subprocess.run(list_cmd, capture_output=True, text=True, check=False)
+            retry_list = _run(list_cmd, capture_output=True, text=True, check=False)
             if retry_list.returncode == 0:
                 try:
                     prs = json.loads(retry_list.stdout)
@@ -299,7 +321,7 @@ class RealGitHubStatePublisher:
             raise GitHubPRError(f"gh pr create failed: {create_res.stderr}")
 
         # Even a zero exit code is insufficient: re-query durable remote evidence.
-        verified = subprocess.run(list_cmd, capture_output=True, text=True, check=False)
+        verified = _run(list_cmd, capture_output=True, text=True, check=False)
         if verified.returncode != 0:
             self._confirm_operation(op_id, "UNCERTAIN", details="Verify query failed")
             raise GitHubPRError("PR creation outcome unknown; reconcile before retry")
@@ -320,14 +342,14 @@ class RealGitHubStatePublisher:
     def reconcile_pending_operations(self, repo_root: Path | str) -> list[dict[str, Any]]:
         """Reconcile unconfirmed PENDING operations after crash using durable remote evidence."""
         reconciled = []
-        with self._get_connection() as conn:
+        with closing(self._get_connection()) as conn:
             cursor = conn.execute(
                 "SELECT op_id, action, target_branch, head_sha, base_branch FROM operations WHERE status = 'PENDING';"
             )
             pending = cursor.fetchall()
             for op_id, action, target_branch, head_sha, base_branch in pending:
                 if action == "publish_branch":
-                    ls_res = subprocess.run(
+                    ls_res = _run(
                         ["git", "ls-remote", f"https://github.com/{self.repo_slug}.git", f"refs/heads/{target_branch}"],
                         cwd=str(repo_root), capture_output=True, text=True, check=False,
                     )
@@ -337,7 +359,7 @@ class RealGitHubStatePublisher:
                             conn.execute("UPDATE operations SET status = 'RECONCILED' WHERE op_id = ?;", (op_id,))
                             reconciled.append({"op_id": op_id, "action": action, "status": "RECONCILED"})
                 elif action == "create_or_update_pr":
-                    list_res = subprocess.run(
+                    list_res = _run(
                         [
                             "gh", "pr", "list", "--repo", self.repo_slug, "--head", target_branch,
                             "--state", "all", "--json", "number,url,headRefOid,state",
@@ -360,24 +382,28 @@ class RealGitHubStatePublisher:
                             pass
         return reconciled
 
-    def get_pr_merge_status(
-        self,
-        pr_number: int,
-    ) -> dict[str, Any]:
-        """Read-only query of remote GitHub PR merge status without approval or human actor gate."""
+    def _fetch_pr_view(self, pr_number: int) -> dict[str, Any]:
+        """Query gh pr view for merge-status fields and parse the JSON response."""
         cmd = [
             "gh", "pr", "view", str(pr_number),
             "--repo", self.repo_slug,
             "--json", "number,state,mergedAt,mergeCommit,headRefOid,mergedBy",
         ]
-        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        res = _run(cmd, capture_output=True, text=True, check=False)
         if res.returncode != 0:
             raise GitHubPRError(f"Failed to query PR #{pr_number} status from GitHub: {res.stderr}")
 
         try:
-            data = json.loads(res.stdout)
+            return json.loads(res.stdout)
         except json.JSONDecodeError as exc:
             raise GitHubPRError(f"Invalid JSON response from gh pr view #{pr_number}") from exc
+
+    def get_pr_merge_status(
+        self,
+        pr_number: int,
+    ) -> dict[str, Any]:
+        """Read-only query of remote GitHub PR merge status without approval or human actor gate."""
+        data = self._fetch_pr_view(pr_number)
 
         state = data.get("state")
         head_oid = data.get("headRefOid")
@@ -436,19 +462,7 @@ class RealGitHubStatePublisher:
         except ApprovalVerificationError as exc:
             raise GitHubPRError(f"Approval token verification failed for PR #{pr_number} merge: {exc}") from exc
 
-        cmd = [
-            "gh", "pr", "view", str(pr_number),
-            "--repo", self.repo_slug,
-            "--json", "number,state,mergedAt,mergeCommit,headRefOid,mergedBy",
-        ]
-        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        if res.returncode != 0:
-            raise GitHubPRError(f"Failed to query PR #{pr_number} status from GitHub: {res.stderr}")
-
-        try:
-            data = json.loads(res.stdout)
-        except json.JSONDecodeError as exc:
-            raise GitHubPRError(f"Invalid JSON response from gh pr view #{pr_number}") from exc
+        data = self._fetch_pr_view(pr_number)
 
         state = data.get("state")
         head_oid = data.get("headRefOid")

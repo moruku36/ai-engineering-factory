@@ -54,6 +54,4 @@ available Antigravity transport (`agentapi`) only supports interactive
 execution and no confirmed process/network isolation boundary. Rather than
 silently falling back to a lower-safety execution mode, the Factory fails
 closed and requires you to select `ManualAdapter` explicitly. See
-[antigravity.md](antigravity.md) and
-[ANTIGRAVITY_INTEGRATION_EVALUATION.md](../operations/ANTIGRAVITY_INTEGRATION_EVALUATION.md)
-for the full evaluation.
+[antigravity.md](antigravity.md) for the full evaluation.

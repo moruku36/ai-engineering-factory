@@ -58,50 +58,20 @@ AI Engineering Factory では、エージェントによる独断実行を許さ
 ### 1. タスク仕様の定義
 エージェントへの作業指示は、自然言語チャットではなく機械可読なタスク定義（YAML）として記述します（`schema_version`、`allowed_paths`、`validation`、`approval` などを持つスキーマ検証済みの構造体）。実例はこのリポジトリ自身を対象にした [`tasks/examples/sample-task.yaml`](tasks/examples/sample-task.yaml)、自分のリポジトリ向けのひな形は [`tasks/templates/basic-task.yaml`](tasks/templates/basic-task.yaml) を参照してください。
 
-### 2. 環境診断・初期化・最小実行
+### 2. 診断・実行・承認の最小例
 ```bash
 pip install -e ".[dev]"
-
 python -m orchestrator.cli doctor                              # 環境診断（Exit 2 = 正常 + MANUAL_ONLY）
 python -m orchestrator.cli init --repository owner/repo        # 設定 + runtime-root を作成
 python -m orchestrator.cli demo --task-file tasks/examples/sample-task.yaml --worktree .
-python -m orchestrator.cli status                               # タスク状態台帳 (SQLite) の確認
 ```
-`demo` は非隔離のローカル実行（`ManualAdapter`）でタスク→検証→Evidenceの流れを素早く確認するためのものです。信頼できないコードには使わないでください。
-
-### 3. 隔離コンテナ実行と独立検証 (Python API)
-未信頼な成果物に対しては、通信遮断コンテナ内でテストを実行し、自己申告ログを信用せずに実測 `candidate_digest`（64桁SHA-256）を独立検証します。`OfflineContainerRunner` はタグ付きイメージやフリーな `argv` を受け付けず、事前に登録された `sha256:` immutableイメージIDと `command_id` のみを実行し、Worktreeの読み取り専用スナップショットをマウントして `base_sha` との実差分を測定します。完全なコード例は [クイックスタート §7](docs/getting-started.md#7-the-real-isolation--verification-path) を参照してください。
-
-### 4. マージ前の人手承認トークン発行 (CLI `approve`)
-`approval.before_merge: true` のポリシーに基づき、人間オペレーターが署名鍵を用いて単回利用の承認トークンを発行します。
-```bash
-python -m orchestrator.cli approve \
-  --action merge_pull_request --repository owner/repo --task-id TASK-001 \
-  --head-sha <commit-sha> --target-ref refs/heads/main \
-  --command "git merge task/task-001" \
-  --policy-hash <sha256> --plan-hash <sha256> \
-  --approved-by alice --key-file /path/to/operator.key
-```
-発行されたトークンは SQLite 状態台帳に記録され、GitHub 操作実行時に1度だけ消費（Consume）されます。PRのpush/作成自体はFactoryが自動で行うことはなく（`GitHubStatePublisher` の push/PR作成は未実装として明示的に例外を送出）、Evidence確認後に人間が `git push` / `gh pr create` します。
+`demo` は非隔離のローカル実行（`ManualAdapter`）でタスク→検証→Evidenceの流れを素早く確認するためのものです。信頼できないコードには使わないでください。通信遮断コンテナでの隔離実行・独立検証（Python API）と、マージ前の人手承認トークン発行（CLI `approve`）を含む全ステップは **[15分クイックスタート](docs/getting-started.md)** に一本道でまとめています。
 
 ---
 
 ## 📚 用語集 (Glossary)
 
-初めて本リポジトリを読むエンジニア向けの主要キーワードです。
-
-| 用語 | 説明 |
-| :--- | :--- |
-| **SoT (Source of Truth)** | リポジトリのGitコミットおよびPR履歴。エージェントの一時記憶ではなく、リポジトリこそが真実の情報源です。 |
-| **CAS (Compare-And-Swap)** | SQLite状態台帳の楽観的並行性制御。リビジョン番号を照合し、並列ワーカーによる競合や状態破壊を防ぎます。 |
-| **runtime-root** | リポジトリ外に配置される使い捨て実行領域。生ログ、PID、一時DBをGit管理外へ完全隔離します。 |
-| **Evidence Bundle** | テストログ、実行結果、成果物から計算された実測 `candidate_digest` を含む、改ざん不能な検証証跡。 |
-| **Fail-Closed** | 異常、未認証、未検証項目に遭遇した際、例外をもみ消さずに「安全側に倒して即時拒絶（ブロック）」する設計思想。 |
-| **Worktree** | Gitの複数ブランチを別ディレクトリに同時チェックアウトする機能。タスクごとのコード隔離に使用します。 |
-| **Lease** | タスク実行権限の有効期限。タイムアウトやプロセス生存確認（PID監視）によりデッドロックを防止します。 |
-| **Approval Token** | 人間オペレーターが署名鍵を用いて発行する、暗号学的に保護された単回消費型の承認証。 |
-| **Adapter** | 外部のエージェントランタイム（Container, Manual, Antigravity等）と制御プレーンを繋ぐ抽象化層。 |
-| **MANUAL_ONLY** | 現在の動作モード。完全自律ではなく、すべての重要操作に人間の介在を必須とする状態。 |
+主要キーワードは **[docs/glossary.md](docs/glossary.md)** にまとめています。
 
 ---
 
@@ -109,25 +79,7 @@ python -m orchestrator.cli approve \
 
 本システムは、AIエージェントに直接操作を許さず、**制御プレーン（Control Plane）** が単一の状態台帳（Single Writer + CAS）と厳格なスキーマによって全プロセスを統制します。
 
-![AI Engineering Factory アーキテクチャ図（実装準拠版）](docs/architecture/images/architecture-diagram.png)
-
-> 上図は現在リポジトリに実装されている範囲のみを描いています。Redis / S3 / Slack / Notion 連携やCI/CDでの自動デプロイなどは将来構想であり、現時点では実装されていません（詳細は [PROJECT_STATE.md](PROJECT_STATE.md) を参照）。
-
-```text
-要件定義 / 仕様策定 (JSON Schema)
-        ↓
-Machine-readableなTaskへ分割
-        ↓
-通信遮断コンテナ / Worktree で隔離実行
-        ↓
-独立検証器による証跡生成 (Evidence Bundle)
-        ↓
-品質ゲート検査 (Lint / Test / Secret Scan / Consistency)
-        ↓
-署名鍵による本人認証付き承認 (Human Approval)
-        ↓
-Pull Request 作成 → 人間による最終マージ
-```
+> 下図は現在リポジトリに実装されている範囲のみを描いています。Redis / S3 / Slack / Notion 連携やCI/CDでの自動デプロイなどは将来構想であり、現時点では実装されていません（詳細は [PROJECT_STATE.md](PROJECT_STATE.md) を参照）。
 
 ```mermaid
 flowchart TD
@@ -258,6 +210,7 @@ Automatic MergeやUnattended Production Deploymentは、このFactoryの目標�
 ## Documentation
 
 - [Getting Started (15分クイックスタート)](docs/getting-started.md)
+- [用語集 (Glossary)](docs/glossary.md)
 - [Case Study: Web Security Control Lab](docs/case-studies/web-security-control-lab.md) — Phase Boundary / Human Merge Boundaryの実戦検証
 - [Adapter Guide](docs/adapters/README.md) — Claude Code / Codex / 独自Adapterの繋ぎ方
 - [Architecture](ARCHITECTURE.md)
