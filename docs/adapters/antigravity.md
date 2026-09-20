@@ -19,10 +19,15 @@ batch execution mode and no confirmed process/network isolation boundary
 equivalent to `OfflineContainerRunner`. Rather than treat "binary found" as
 "safe to run untrusted work", the Factory fails closed.
 
-See
-[ANTIGRAVITY_INTEGRATION_EVALUATION.md](../operations/ANTIGRAVITY_INTEGRATION_EVALUATION.md)
-for the full evaluation and what would need to change for this to unblock
-(an official headless batch/isolation SDK).
+A hands-on capability audit (Python `google-antigravity` SDK, the `agy` CLI, and
+the local `agentapi`/`language_server` binaries) found no official interface that
+covers autonomous `start_task`/`poll`/`cancel`/`collect`, so the Factory refuses
+to fabricate an unverified JSON-RPC or subprocess protocol against them. Unblocking
+this would require: (1) an officially released `google-antigravity` SDK usable
+under container network egress filtering, (2) task-scoped ephemeral auth tokens
+for model API calls (never a host's full browser/OAuth credentials), and (3) an
+adapter that tracks real session IDs and real exit codes rather than assuming
+success.
 
 ## Using it today
 

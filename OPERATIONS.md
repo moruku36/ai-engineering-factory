@@ -5,12 +5,11 @@
 and durable GitHub operation journaling are implemented — see
 [PROJECT_STATE.md](PROJECT_STATE.md) for the current capability milestone.
 What remains unimplemented is native Antigravity execution, which is
-`BLOCKED` pending an official batch/isolation SDK (see
-[ANTIGRAVITY_INTEGRATION_EVALUATION.md](docs/operations/ANTIGRAVITY_INTEGRATION_EVALUATION.md)).
-`doctor` therefore still reports `Execution Mode: MANUAL_ONLY` and a
-nonzero readiness status by design. Passing unit tests does not by itself
-enable unattended use; see `docs/operations/POST_PR7_REVIEW.md` for the
-now-superseded historical baseline this guide has moved past.
+`BLOCKED` pending an official batch/isolation SDK (confirmed by a hands-on
+capability audit; see [PROJECT_STATE.md](PROJECT_STATE.md) for the
+conclusion). `doctor` therefore still reports `Execution Mode: MANUAL_ONLY`
+and a nonzero readiness status by design. Passing unit tests does not by
+itself enable unattended use.
 
 ## 1. Runtime Isolation
 - All runtime transient state (active SQLite DB, worker PID records, distributed leases, raw execution logs) must be placed in `runtime-root`, completely isolated from the git repository.

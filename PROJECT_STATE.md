@@ -2,20 +2,20 @@
 
 ## 現在のステータス: EXPERIMENTAL / MANUAL_ONLY
 
-PR #7時点ではOS隔離や本人認証付き承認が未実装でした（[`POST_PR7_REVIEW.md`](docs/operations/POST_PR7_REVIEW.md) は当時のHistorical Reviewです）。その後のPR #12/#13（[通信遮断型Linuxコンテナ隔離](docs/operations/OFFLINE_CONTAINER_BOUNDARY.md)および[承認トークンとRun Loopの接続](docs/operations/APPROVED_CONTAINER_LOOP.md)）と5大コア領域改修によって、Linuxコンテナ隔離、本人認証付き承認、成果物検証、GitHub操作永続化、mainブランチ保護（Ruleset）が整いました。
+PR #7時点ではOS隔離や本人認証付き承認が未実装でした。その後のPR #12/#13（[通信遮断型Linuxコンテナ隔離](docs/operations/OFFLINE_CONTAINER_BOUNDARY.md)および[承認トークンとRun Loopの接続](docs/operations/APPROVED_CONTAINER_LOOP.md)）と5大コア領域改修によって、Linuxコンテナ隔離、本人認証付き承認、成果物検証、GitHub操作永続化、mainブランチ保護（Ruleset）が整いました。
 
 しかし、Antigravity Native Runtime公式SDKが未提供（BLOCKED）であるため、現時点では**本番利用向けに認証・保証された完全自律開発プラットフォームではなく、MANUAL_ONLYです**。
 
-このファイルは現在のHigh-level Statusをまとめたものです。`docs/operations/`配下のReview / Handoff Documentは、それぞれが確認したCommit時点の状態を記録しています。その後に統合された実装によって、古いReadiness判定が更新されている場合があります。
+このファイルは現在のHigh-level Statusをまとめたものです。過去の時点写しのReview / Handoff Documentは結論のみ本ファイルに残し、本文は削除済みです（詳細な議論の経緯はGitHubのPR履歴を参照してください）。
 
 ## 現在のCapability Milestone
 
 5大コア領域の改修を実施：
-- [本人認証付き承認発行と署名鍵管理](docs/operations/FIVE_DOMAINS_HARDENING_REPORT.md#領域1-本人認証付き承認発行と署名鍵管理): 署名鍵とApproverRegistryによるHMAC-SHA256認証を実装。
-- [成果物回収と独立検証](docs/operations/FIVE_DOMAINS_HARDENING_REPORT.md#領域2-生成ファイル差分の回収と独立検証): パストラバーサル/symlink/保護パス遮断を伴うArtifactCollectorと、自己申告を排除したIndependentVerifierを実装。
-- [Antigravity実接続評価](docs/operations/ANTIGRAVITY_INTEGRATION_EVALUATION.md): 実機調査に基づきNative RuntimeステータスをBLOCKEDと確定、暗黙フォールバックを禁止。
-- [GitHub操作の永続化と復旧](docs/operations/FIVE_DOMAINS_HARDENING_REPORT.md#領域4-github操作の永続記録障害復旧実タスク検証): 2相コミット型ジャーナルとクラッシュ照合、実測監視によるマージ検証を実装。
-- [並列復旧・安全キャンセル・依存整合性検査](docs/operations/FIVE_DOMAINS_HARDENING_REPORT.md#領域5-並列実行復旧実行中キャンセル依存脆弱性監査): プロセスツリー停止確認型キャンセルと依存関係整合性確認 (`pip check`) を実装。
+- **本人認証付き承認発行と署名鍵管理**: 署名鍵とApproverRegistryによるHMAC-SHA256認証を実装。
+- **成果物回収と独立検証**: パストラバーサル/symlink/保護パス遮断を伴うArtifactCollectorと、自己申告を排除したIndependentVerifierを実装。
+- **Antigravity実接続評価**: 実機調査に基づきNative RuntimeステータスをBLOCKEDと確定、暗黙フォールバックを禁止。
+- **GitHub操作の永続化と復旧**: 2相コミット型ジャーナルとクラッシュ照合、実測監視によるマージ検証を実装。
+- **並列復旧・安全キャンセル・依存整合性検査**: プロセスツリー停止確認型キャンセルと依存関係整合性確認 (`pip check`) を実装。
 
 全体の判定は、Antigravity Native Runtime公式SDK不在のため、依然として **MANUAL_ONLY** です。
 
@@ -65,12 +65,12 @@ Status Document同士で内容が食い違う場合は、次の順序で判断�
 
 1. 現在の`main` ImplementationとCI Result
 2. この`PROJECT_STATE.md`
-3. 対象Subsystemについて最も新しい日付のHandoff / Review Document
-4. それ以前のPhase / Review RecordはHistorical Evidenceとして扱う
+3. `docs/operations/`配下に現存する運用ドキュメント（`APPROVED_CONTAINER_LOOP.md`、`OFFLINE_CONTAINER_BOUNDARY.md`、`runtime-isolation.md`）
+4. それ以前のPhase / Review Recordは、結論のみここに残しHistorical Evidenceとして扱う（本文は削除済み。詳細はGitHubのPR履歴を参照）
 
-[`POST_PHASE4_REVIEW.md`](docs/operations/POST_PHASE4_REVIEW.md) は、Real Integration前の厳しいCheckpointを意図的に残したHistorical Reviewです。
+過去に存在した `POST_PHASE4_REVIEW.md` は、Real Integration前の厳しいCheckpointを意図的に残したHistorical Reviewでした（結論は上の Capability Milestone に反映済み）。
 
-[`ISOLATION_APPROVAL_INTEGRATION_HANDOFF.md`](docs/operations/ISOLATION_APPROVAL_INTEGRATION_HANDOFF.md) の完了表記は最新レビューで撤回しています。モックによるテスト成功は実接続や隔離の証明ではありません。
+過去に存在した `ISOLATION_APPROVAL_INTEGRATION_HANDOFF.md` の完了表記は最新レビューで撤回されています。モックによるテスト成功は実接続や隔離の証明ではありません。
 
 ## Public Repositoryとして今後やること
 
