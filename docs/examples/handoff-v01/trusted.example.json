@@ -1,0 +1,9 @@
+{
+  "manifest_sha256": "add4e7eb7ce1d992ebc2e2c1e2ce1ce079204df0116bd9aab7859df827ab9fc8",
+  "run_id": "synthetic-mail-001",
+  "attempt_id": "attempt-1",
+  "output_versions": {
+    "clarification.txt": "1",
+    "report.xml": "1"
+  }
+}
