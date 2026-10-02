@@ -29,7 +29,12 @@ def publish_receipt(path, receipt):
         os.link(temporary, path)
     finally:
         if temporary is not None:
-            Path(temporary).unlink(missing_ok=True)
+            try:
+                Path(temporary).unlink(missing_ok=True)
+            except OSError:
+                # Best-effort scratch cleanup must not mask the original failure or
+                # change a successfully published complete receipt into a failure.
+                pass
 
 
 def main(argv=None):

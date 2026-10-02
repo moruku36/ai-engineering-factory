@@ -6,6 +6,7 @@ import json
 import os
 import stat
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -61,7 +62,7 @@ class HandoffTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
+        self.root = Path(self.temporary.name).resolve()
         self.packet = self.root / "receiver"
         self.packet.mkdir()
         self.manifest, self.contents = fixture_manifest()
@@ -351,12 +352,80 @@ class HandoffTests(unittest.TestCase):
         self.assertEqual(list(self.root.glob(".receipt-*.tmp")), [])
 
     def test_large_json_integer_has_controlled_error(self):
-        raw = b'{"number":' + b"1" * 5000 + b"}"
-        with self.assertRaises(HandoffError):
-            load_json(raw)
-        (self.packet / "manifest.json").write_bytes(raw)
-        self.trust["manifest_sha256"] = digest(raw)
-        with self.assertRaises(HandoffError):
+        previous = sys.get_int_max_str_digits()
+        try:
+            sys.set_int_max_str_digits(4300)
+            raw = b'{"number":' + b"1" * 5000 + b"}"
+            with self.assertRaises(HandoffError):
+                load_json(raw)
+            (self.packet / "manifest.json").write_bytes(raw)
+            self.trust["manifest_sha256"] = digest(raw)
+            with self.assertRaises(HandoffError):
+                self.collect()
+        finally:
+            sys.set_int_max_str_digits(previous)
+
+    def test_large_junit_count_has_controlled_error(self):
+        previous = sys.get_int_max_str_digits()
+        try:
+            sys.set_int_max_str_digits(4300)
+            report = b'<testsuite tests="' + b"1" * 5000 + b'"><testcase/></testsuite>'
+            self.contents["report.xml"] = report
+            self.manifest["outputs"][1].update(size_bytes=len(report), sha256=digest(report))
+            self.write_packet()
+            with self.assertRaisesRegex(HandoffError, "Invalid JUnit counts"):
+                self.collect()
+        finally:
+            sys.set_int_max_str_digits(previous)
+
+    def test_cleanup_failure_does_not_misreport_published_receipt(self):
+        trust_path = self.root / "trusted.json"
+        trust_path.write_text(json.dumps(self.trust), encoding="utf-8")
+        receipt_path = self.root / "cleanup-receipt.json"
+        with patch.object(Path, "unlink", side_effect=PermissionError("cleanup refused")):
+            with patch("sys.stdout"):
+                self.assertEqual(main(["--packet", str(self.packet), "--trust", str(trust_path),
+                                       "--receipt", str(receipt_path)]), 0)
+        self.assertEqual(json.loads(receipt_path.read_bytes())["status"], "COLLECTED")
+        self.assertEqual(len(list(self.root.glob(".receipt-*.tmp"))), 1)
+
+    def test_cleanup_failure_does_not_mask_original_publication_failure(self):
+        receipt_path = self.root / "previous-receipt.json"
+        receipt_path.write_bytes(b"previous evidence")
+        with patch.object(Path, "unlink", side_effect=PermissionError("cleanup refused")):
+            with self.assertRaises(FileExistsError):
+                publish_receipt(receipt_path, {"run_id": "new fixture"})
+        self.assertEqual(receipt_path.read_bytes(), b"previous evidence")
+        self.assertEqual(len(list(self.root.glob(".receipt-*.tmp"))), 1)
+
+    def test_optional_missing_under_marked_reparse_parent_rejected(self):
+        self.manifest["outputs"][0].update(path="marked/absent.txt", required=False)
+        self.write_packet()
+        real_lstat = Path.lstat
+
+        def marked_lstat(path):
+            if path == self.packet / "marked":
+                return SimpleNamespace(st_mode=stat.S_IFDIR,
+                                       st_file_attributes=stat.FILE_ATTRIBUTE_REPARSE_POINT)
+            return real_lstat(path)
+
+        with patch.object(Path, "lstat", marked_lstat):
+            with self.assertRaisesRegex(HandoffError, "reparse point"):
+                self.collect()
+
+    @unittest.skipUnless(os.name == "nt", "Windows dangling junction fixture")
+    def test_optional_missing_under_real_dangling_junction_rejected(self):
+        target = self.root / "absent-junction-target"
+        target.mkdir()
+        link = self.packet / "dangling-junction"
+        result = subprocess.run(["cmd.exe", "/c", "mklink", "/J", str(link), str(target)],
+                                capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.addCleanup(link.rmdir)
+        target.rmdir()  # Only this empty fixture directory, leaving a dangling junction.
+        self.manifest["outputs"][0].update(path="dangling-junction/absent.txt", required=False)
+        self.write_packet()
+        with self.assertRaisesRegex(HandoffError, "reparse point"):
             self.collect()
 
     def test_windows_reparse_attribute_without_path_is_junction(self):

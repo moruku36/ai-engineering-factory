@@ -33,8 +33,10 @@ service, model selection, cloud access, or new persistent storage is added.
    published by a non-overwriting hard link. Existing receipt files are never
    overwritten, including concurrent creation. Filesystems without hard-link
    support fail closed. A hard process kill may leave a temporary file, but does
-   not publish partially written final evidence. The
-   trust and receipt files must be outside the packet. Authentication of the
+   not publish partially written final evidence. Temporary cleanup is best effort:
+   a cleanup error may retain a scratch file,
+   without changing publication success or masking the original publication error.
+   The trust and receipt files must be outside the packet. Authentication of the
    coordinator record belongs to the existing trusted delivery route, not this
    local utility. The API caller has the same trust responsibility.
 5. Independently execute acceptance tests against the pinned candidate and obtain

@@ -98,7 +98,7 @@ def _reject_link(path):
              "Windows reparse point refused")
 
 
-def _read_file(root, relative, limit):
+def _read_file(root, relative, limit, *, optional=False):
     """Check every component; this offline tool requires a quiescent receiver directory."""
     parts = relative.split("/")
     current = root
@@ -107,6 +107,8 @@ def _read_file(root, relative, limit):
         _reject_link(current)
     try:
         _require(current.resolve().is_relative_to(root), "Path escapes packet")
+        if optional and not current.exists():
+            return None  # Every component was inspected before accepting optional absence.
         _require(stat.S_ISREG(current.stat().st_mode), "Output must be a regular file")
         with current.open("rb") as stream:
             raw = stream.read(limit + 1)
@@ -242,10 +244,9 @@ def collect_receipt(packet_dir, trust):
     measured_bytes = {}
     for item in manifest["outputs"]:
         _require(versions[item["path"]] == item["storage"]["version"], "Wrong output version")
-        path = root / item["path"]
-        if not item["required"] and not path.exists() and not path.is_symlink():
+        content = _read_file(root, item["path"], MAX_FILE_BYTES, optional=not item["required"])
+        if content is None:
             continue
-        content = _read_file(root, item["path"], MAX_FILE_BYTES)
         _require(len(content) == item["size_bytes"], "Output size differs")
         digest = hashlib.sha256(content).hexdigest()
         _require(digest == item["sha256"], "Output hash differs")
@@ -287,9 +288,13 @@ def collect_receipt(packet_dir, trust):
                         tag = {"tests": "testcase", "failures": "failure",
                                "errors": "error", "skipped": "skipped"}[attr]
                         expected = len(list(suite.iter(tag)))
-                        _require(int(value) == expected, "JUnit count differs from test cases")
+                        try:
+                            count = int(value)
+                        except (ValueError, OverflowError) as exc:
+                            raise HandoffError("Invalid JUnit counts") from exc
+                        _require(count == expected, "JUnit count differs from test cases")
                         if attr in ("failures", "errors"):
-                            _require(int(value) == 0, "JUnit reports failure/error")
+                            _require(count == 0, "JUnit reports failure/error")
     return {
         "schema_version": "0.1", "run_id": manifest["run_id"],
         "attempt_id": manifest["attempt_id"], "status": "COLLECTED",

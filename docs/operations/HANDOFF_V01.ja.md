@@ -24,6 +24,7 @@ FactoryはExperimental / MANUAL_ONLYのまま。外部agent、クラウド実行
    JSONをUTF-8へ完全にencodeしてから同じdirectoryの一時ファイルへ書き、flush後にhard linkで原子的に公開する。
    同時作成を含め同名receiptの上書きを拒否する。hard link非対応のfilesystemはBLOCKEDとする。
    強制終了で一時ファイルが残る場合はあるが、書込み途中の最終receiptは公開しない。
+   一時ファイルの後始末はbest effortで、失敗しても公開済みreceiptの成功や元の公開エラーを変更しない。
    trustとreceiptはpacketの外に置く。
    trusted recordの認証は既存の配送経路の責任であり、このローカルツールは認証しない。
 5. 固定candidateへの受入試験と必要な独立レビューを別に行う。実際の実行・取消・停止・引継ぎも別に照合する。
