@@ -329,11 +329,15 @@ class HandoffTests(unittest.TestCase):
                     def write(self, content):
                         self.stream.write(content[:5])
                         self.stream.flush()
-                        raise interruption()
+                        raise self.interruption()
 
-                with patch("orchestrator.handoff.os.fdopen", InterruptedStream):
-                    with self.assertRaises(interruption):
-                        publish_receipt(receipt_path, {"run_id": "fixture"})
+                    def __init__(self, descriptor, mode):
+                        self.stream = real_fdopen(descriptor, mode)
+                        self.interruption = interruption
+
+                with (patch("orchestrator.handoff.os.fdopen", InterruptedStream),
+                      self.assertRaises(interruption)):
+                    publish_receipt(receipt_path, {"run_id": "fixture"})
                 self.assertFalse(receipt_path.exists())
                 self.assertEqual(list(self.root.glob(".receipt-*.tmp")), [])
 
@@ -345,9 +349,9 @@ class HandoffTests(unittest.TestCase):
             receipt_path.write_bytes(b"previous receiver evidence")
             real_link(source, destination)
 
-        with patch("orchestrator.handoff.os.link", side_effect=race):
-            with self.assertRaises(FileExistsError):
-                publish_receipt(receipt_path, {"run_id": "new fixture"})
+        with (patch("orchestrator.handoff.os.link", side_effect=race),
+              self.assertRaises(FileExistsError)):
+            publish_receipt(receipt_path, {"run_id": "new fixture"})
         self.assertEqual(receipt_path.read_bytes(), b"previous receiver evidence")
         self.assertEqual(list(self.root.glob(".receipt-*.tmp")), [])
 
@@ -382,19 +386,19 @@ class HandoffTests(unittest.TestCase):
         trust_path = self.root / "trusted.json"
         trust_path.write_text(json.dumps(self.trust), encoding="utf-8")
         receipt_path = self.root / "cleanup-receipt.json"
-        with patch.object(Path, "unlink", side_effect=PermissionError("cleanup refused")):
-            with patch("sys.stdout"):
-                self.assertEqual(main(["--packet", str(self.packet), "--trust", str(trust_path),
-                                       "--receipt", str(receipt_path)]), 0)
+        with (patch.object(Path, "unlink", side_effect=PermissionError("cleanup refused")),
+              patch("sys.stdout")):
+            self.assertEqual(main(["--packet", str(self.packet), "--trust", str(trust_path),
+                                   "--receipt", str(receipt_path)]), 0)
         self.assertEqual(json.loads(receipt_path.read_bytes())["status"], "COLLECTED")
         self.assertEqual(len(list(self.root.glob(".receipt-*.tmp"))), 1)
 
     def test_cleanup_failure_does_not_mask_original_publication_failure(self):
         receipt_path = self.root / "previous-receipt.json"
         receipt_path.write_bytes(b"previous evidence")
-        with patch.object(Path, "unlink", side_effect=PermissionError("cleanup refused")):
-            with self.assertRaises(FileExistsError):
-                publish_receipt(receipt_path, {"run_id": "new fixture"})
+        with (patch.object(Path, "unlink", side_effect=PermissionError("cleanup refused")),
+              self.assertRaises(FileExistsError)):
+            publish_receipt(receipt_path, {"run_id": "new fixture"})
         self.assertEqual(receipt_path.read_bytes(), b"previous evidence")
         self.assertEqual(len(list(self.root.glob(".receipt-*.tmp"))), 1)
 
@@ -409,9 +413,9 @@ class HandoffTests(unittest.TestCase):
                                        st_file_attributes=stat.FILE_ATTRIBUTE_REPARSE_POINT)
             return real_lstat(path)
 
-        with patch.object(Path, "lstat", marked_lstat):
-            with self.assertRaisesRegex(HandoffError, "reparse point"):
-                self.collect()
+        with (patch.object(Path, "lstat", marked_lstat),
+              self.assertRaisesRegex(HandoffError, "reparse point")):
+            self.collect()
 
     @unittest.skipUnless(os.name == "nt", "Windows dangling junction fixture")
     def test_optional_missing_under_real_dangling_junction_rejected(self):
@@ -419,7 +423,7 @@ class HandoffTests(unittest.TestCase):
         target.mkdir()
         link = self.packet / "dangling-junction"
         result = subprocess.run(["cmd.exe", "/c", "mklink", "/J", str(link), str(target)],
-                                capture_output=True, timeout=10)
+                                capture_output=True, timeout=10, check=False)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.addCleanup(link.rmdir)
         target.rmdir()  # Only this empty fixture directory, leaving a dangling junction.
@@ -432,16 +436,16 @@ class HandoffTests(unittest.TestCase):
         real_lstat = Path.lstat
         for flagged_path in (self.packet, self.packet / "clarification.txt"):
             with self.subTest(path=flagged_path):
-                def marked_lstat(path):
-                    if path == flagged_path:
+                def marked_lstat(path, marked_path=flagged_path):
+                    if path == marked_path:
                         return SimpleNamespace(st_mode=stat.S_IFDIR,
                                                st_file_attributes=stat.FILE_ATTRIBUTE_REPARSE_POINT)
                     return real_lstat(path)
 
-                with patch.object(Path, "is_junction", None, create=True):
-                    with patch.object(Path, "lstat", marked_lstat):
-                        with self.assertRaisesRegex(HandoffError, "reparse point"):
-                            self.collect()
+                with (patch.object(Path, "is_junction", None, create=True),
+                      patch.object(Path, "lstat", marked_lstat),
+                      self.assertRaisesRegex(HandoffError, "reparse point")):
+                    self.collect()
 
     @unittest.skipUnless(os.name == "nt", "Windows junction fixture")
     def test_real_windows_junction_rejected(self):
@@ -450,7 +454,7 @@ class HandoffTests(unittest.TestCase):
         (target / "outside.txt").write_bytes(self.contents["clarification.txt"])
         link = self.packet / "junction"
         result = subprocess.run(["cmd.exe", "/c", "mklink", "/J", str(link), str(target)],
-                                capture_output=True, timeout=10)
+                                capture_output=True, timeout=10, check=False)
         self.assertEqual(result.returncode, 0, result.stderr)
         # Remove only the junction entry before TemporaryDirectory's recursive cleanup.
         self.addCleanup(link.rmdir)
