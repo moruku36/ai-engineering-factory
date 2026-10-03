@@ -1,0 +1,2 @@
+# Preserve fixture bytes and external SHA-256 pins across Windows/Linux checkouts.
+* -text

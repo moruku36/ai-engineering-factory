@@ -217,6 +217,7 @@ Automatic MergeやUnattended Production Deploymentは、このFactoryの目標�
 
 ## Documentation
 
+- [ローカル成果物受渡し v0.1](docs/operations/HANDOFF_V01.ja.md) — manifestと受け手側bytesの照合。COLLECTEDのみを記録し、受入試験・独立レビューは別に行う。
 - [Getting Started (15分クイックスタート)](docs/getting-started.md)
 - [用語集 (Glossary)](docs/glossary.md)
 - [Case Study: Web Security Control Lab](docs/case-studies/web-security-control-lab.md) — Phase Boundary / Human Merge Boundaryの実戦検証

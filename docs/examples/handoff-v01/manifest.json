@@ -1,0 +1,97 @@
+{
+  "schema_version": "0.1",
+  "run_id": "synthetic-mail-001",
+  "attempt_id": "attempt-1",
+  "parent_run_id": null,
+  "purpose": "Offline synthetic clarification packet",
+  "producer": "fixture-builder",
+  "request_sha256": "2fe784b0d2911744e76efa456fb28b13ee979cbf0e84cb44272c3cbcc1e8a823",
+  "acceptance_criteria": [
+    "Unanswered deadline stays unknown"
+  ],
+  "declared_status": "EXECUTED",
+  "next_step": "Owner reviews unanswered deadline",
+  "source": {
+    "repository": "anonymous-fixture",
+    "commit_sha": "unknown",
+    "snapshot_sha256": "7795c68e042b7822c32e8eb99c5a9d18ace28993c6adb95d598bac6c8028ef1e",
+    "base_sha": "unknown",
+    "dirty": true,
+    "complete_diff_required": false
+  },
+  "inputs": [
+    {
+      "id": "synthetic-mail",
+      "size_bytes": 57,
+      "sha256": "7795c68e042b7822c32e8eb99c5a9d18ace28993c6adb95d598bac6c8028ef1e"
+    }
+  ],
+  "environment": {
+    "kind": "local-cpu-fixture",
+    "os": "unknown",
+    "tool_versions": {},
+    "requested": {
+      "model": "session-default",
+      "effort": "session-default"
+    },
+    "observed": {
+      "model": "unknown",
+      "effort": "unknown"
+    }
+  },
+  "execution": {
+    "accepted_at": null,
+    "started_at": null,
+    "ended_at": null,
+    "exit_code": null
+  },
+  "limits_and_authority": {
+    "cost_cap": 0,
+    "operations": [
+      "local fixture receipt"
+    ]
+  },
+  "outputs": [
+    {
+      "path": "clarification.txt",
+      "purpose": "anonymous fixture",
+      "required": true,
+      "size_bytes": 57,
+      "sha256": "7795c68e042b7822c32e8eb99c5a9d18ace28993c6adb95d598bac6c8028ef1e",
+      "producer": "fixture-builder",
+      "retrieved_at": "2026-10-02T00:00:00Z",
+      "storage": {
+        "id": "private-fixture-record",
+        "version": "1"
+      }
+    },
+    {
+      "path": "report.xml",
+      "purpose": "anonymous fixture",
+      "required": true,
+      "size_bytes": 69,
+      "sha256": "a7a519d8cae951e4fd23350906ec1835ece9d69d2ca588d82bcd48616bc2abc0",
+      "producer": "fixture-builder",
+      "retrieved_at": "2026-10-02T00:00:00Z",
+      "storage": {
+        "id": "private-fixture-record",
+        "version": "1"
+      }
+    }
+  ],
+  "tests": {
+    "required": true,
+    "command": "anonymous fixture, not live execution",
+    "tool_version": "fixture-v1",
+    "target_sha256": "7795c68e042b7822c32e8eb99c5a9d18ace28993c6adb95d598bac6c8028ef1e",
+    "report_path": "report.xml"
+  },
+  "reviews": [
+    {
+      "reviewer": "fixture-reviewer",
+      "target_sha256": "7795c68e042b7822c32e8eb99c5a9d18ace28993c6adb95d598bac6c8028ef1e",
+      "verdict": "unknown",
+      "findings": []
+    }
+  ]
+}

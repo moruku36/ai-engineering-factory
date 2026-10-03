@@ -39,4 +39,6 @@ The doctor command's exit code 2 can mean a healthy MANUAL_ONLY environment as d
 
 ## Detailed documentation
 
+For offline manifest and receiver byte checks, see [Local artifact handoff v0.1](docs/operations/HANDOFF_V01.md). This bounded tool records COLLECTED only; independent acceptance verification remains separate.
+
 The [Japanese guide](README.ja.md) retains the complete original setup instructions, configuration, examples, project status, and limitations. Supporting documents keep their existing language.
