@@ -317,6 +317,8 @@ class HandoffTests(unittest.TestCase):
         for interruption in (InterruptedError, KeyboardInterrupt):
             with self.subTest(interruption=interruption):
                 class InterruptedStream:
+                    interruption_type = interruption
+
                     def __init__(self, descriptor, mode):
                         self.stream = real_fdopen(descriptor, mode)
 
@@ -329,11 +331,7 @@ class HandoffTests(unittest.TestCase):
                     def write(self, content):
                         self.stream.write(content[:5])
                         self.stream.flush()
-                        raise self.interruption()
-
-                    def __init__(self, descriptor, mode):
-                        self.stream = real_fdopen(descriptor, mode)
-                        self.interruption = interruption
+                        raise self.interruption_type()
 
                 with (patch("orchestrator.handoff.os.fdopen", InterruptedStream),
                       self.assertRaises(interruption)):
