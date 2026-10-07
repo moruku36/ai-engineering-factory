@@ -16,6 +16,6 @@ Experimental / MANUAL_ONLYを維持します。受付側と候補検証側に共
 
 ## 再現とリビジョン
 
-基点commitは`4fb014a4ac91fd042b4797c10bd568e5f76880b5`、実装とテスト証拠のcommitは`2765dc2e3c649b61386fe50193024996c9458f56`です。いずれもこの変更はローカル限定で、続くcommitに文書を含めています。追加変更のCIは未実行で、以前のgreen CIを新しいテストの証拠にしていません。pushもmergeもしていません。
+基点commitは`4fb014a4ac91fd042b4797c10bd568e5f76880b5`、実装とテスト証拠のcommitは`2765dc2e3c649b61386fe50193024996c9458f56`です。この台帳は公開前のローカル検証を記録しています。その時点では追加変更のCIは未実行で、以前のgreen CIを新しいテストの証拠にしていません。その後の反映とCI結果はpull requestとchecksに記録します。
 
 宣言された依存関係を隔離したWSL Ubuntu 24.04のPython 3.12環境で、各リポジトリのルートから実行しました。[実測記録](../evidence/defensive-local-verification.json)に正確なコマンド、出力、UTC日時、検証対象PythonファイルのSHA-256があります。`git log -2 --oneline`でローカル2commitを確認できます。実行モデルとeffortの設定は独立確認できず、Astra mediumで実行したとは主張しません。

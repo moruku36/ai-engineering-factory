@@ -16,6 +16,6 @@ The receipt tool still stops at COLLECTED. Worker success and the legacy string 
 
 ## Reproduction and revision
 
-Base commit: `4fb014a4ac91fd042b4797c10bd568e5f76880b5`. Implementation and test evidence commit: `2765dc2e3c649b61386fe50193024996c9458f56` (local only). The documentation commit follows it. CI for these changes has not run; earlier green CI is not evidence for this revision. Nothing was pushed or merged.
+Base commit: `4fb014a4ac91fd042b4797c10bd568e5f76880b5`. Implementation and test evidence commit: `2765dc2e3c649b61386fe50193024996c9458f56` (implementation snapshot). This ledger records local validation before publication. No CI had run for these changes at that point; earlier green CI is not evidence for this revision. Subsequent publication and CI results are recorded in the pull request and its checks.
 
 Commands run from the repository root with declared dependencies in an isolated WSL Ubuntu 24.04 Python 3.12 environment. Exact command output, UTC time and SHA-256 hashes of tested Python files are in [the local verification record](../evidence/defensive-local-verification.json). Use `git log -2 --oneline` to identify both local commits. Model/effort selection could not be independently inspected; Astra medium execution is not claimed.
