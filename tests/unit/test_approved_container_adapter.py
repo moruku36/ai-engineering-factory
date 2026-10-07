@@ -225,7 +225,7 @@ def test_start_task_verifies_real_worktree_diff_and_junit_report(tmp_path):
         artifacts_dir = tmp_path / "fake-artifacts" / run_id
         artifacts_dir.mkdir(parents=True)
         (artifacts_dir / "report.xml").write_text(
-            '<testsuite tests="1" failures="0" errors="0" skipped="0"></testsuite>', encoding="utf-8",
+            '<testsuite tests="1" failures="0" errors="0" skipped="0"><testcase/></testsuite>', encoding="utf-8",
         )
         return ContainerResult(run_id, 0, "1 passed", artifacts_dir)
 

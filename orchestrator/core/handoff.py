@@ -4,8 +4,9 @@ import hashlib
 import json
 import re
 import stat
-import xml.etree.ElementTree as ET
 from pathlib import Path
+
+from orchestrator.core.junit import JUnitError, parse_junit
 
 MAX_MANIFEST_BYTES = 1024 * 1024
 MAX_FILE_BYTES = 10 * 1024 * 1024
@@ -257,44 +258,10 @@ def collect_receipt(packet_dir, trust):
     if tests["required"]:
         report = measured_bytes[tests["report_path"]]
         try:
-            text = report.decode("utf-8-sig")
-        except UnicodeError as exc:
-            raise HandoffError("JUnit must be UTF-8") from exc
-        _require("\x00" not in text, "JUnit must be UTF-8 without NUL characters")
-        declaration = re.match(r"\s*<\?xml\b[^?]*\?>", text)
-        if declaration:
-            encoding = re.search(r"\bencoding\s*=\s*(['\"])(.*?)\1",
-                                 declaration.group(), re.IGNORECASE)
-            _require(encoding is None or encoding[2].lower() in ("utf-8", "utf8"),
-                     "JUnit encoding declaration must be UTF-8")
-        _require("<!DOCTYPE" not in text.upper() and "<!ENTITY" not in text.upper(),
-                 "DTD/entity reports refused")
-        try:
-            tree = ET.fromstring(text)
-        except ET.ParseError as exc:
-            raise HandoffError("Incomplete or malformed JUnit") from exc
-        _require(tree.tag in ("testsuite", "testsuites"), "Unsupported JUnit root")
-        cases = list(tree.iter("testcase"))
-        _require(bool(cases), "JUnit contains zero test cases")
-        _require(any(case.find("skipped") is None for case in cases), "All tests skipped")
-        _require(not list(tree.iter("failure")) and not list(tree.iter("error")),
-                 "JUnit reports failure/error")
-        for suite in tree.iter():
-            if suite.tag in ("testsuite", "testsuites"):
-                for attr in ("tests", "failures", "errors", "skipped"):
-                    if attr in suite.attrib:
-                        value = suite.attrib[attr]
-                        _require(value.isdecimal(), "Invalid JUnit counts")
-                        tag = {"tests": "testcase", "failures": "failure",
-                               "errors": "error", "skipped": "skipped"}[attr]
-                        expected = len(list(suite.iter(tag)))
-                        try:
-                            count = int(value)
-                        except (ValueError, OverflowError) as exc:
-                            raise HandoffError("Invalid JUnit counts") from exc
-                        _require(count == expected, "JUnit count differs from test cases")
-                        if attr in ("failures", "errors"):
-                            _require(count == 0, "JUnit reports failure/error")
+            counts = parse_junit(report)
+        except JUnitError as exc:
+            raise HandoffError(str(exc)) from exc
+        _require(not counts["failures"] and not counts["errors"], "JUnit reports failure/error")
     return {
         "schema_version": "0.1", "run_id": manifest["run_id"],
         "attempt_id": manifest["attempt_id"], "status": "COLLECTED",

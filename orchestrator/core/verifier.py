@@ -8,13 +8,13 @@ import difflib
 import fnmatch
 import hashlib
 import re
-import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any
 
 from orchestrator.core.artifacts import ArtifactCollectionResult
+from orchestrator.core.junit import JUnitError, parse_junit
 
 
 class VerificationError(Exception):
@@ -72,11 +72,13 @@ class IndependentVerifier:
         """Determine which collected files actually differ from the base tree.
 
         When base_files (a rel_path -> sha256 map of the base_sha tree, restricted to
-        the task's allowed_paths) is supplied, changed_paths is the genuine diff: only
+        the task's allowed_paths) is supplied, changed_paths covers collected additions/modifications only:
         files whose measured content digest differs from the base. Without it, every
         collected file is reported as "changed" and the diff cannot be independently
         confirmed against the base -- this is a best-effort fallback, not a real diff,
         and is flagged as such via the returned diff_verified flag.
+        Missing collected paths are not deletion evidence: diff_verified does not
+        establish a complete repository diff or bind deletions.
         """
         if base_files is not None:
             changed = sorted(
@@ -121,37 +123,12 @@ class IndependentVerifier:
 
     @staticmethod
     def parse_junit_xml(xml_text: str) -> tuple[bool, str, dict[str, int]]:
-        """Independently parse a JUnit XML report rather than trusting a builder's claim.
-
-        Fails closed: a missing/unparsable report, or a report with zero collected
-        tests, is treated as verification failure rather than silently passing.
-        """
-        empty_counts = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
-        if not xml_text or not xml_text.strip():
-            return False, "No JUnit XML report was produced", empty_counts
-
+        """Validate bounded report structure; producer authenticity is a separate concern."""
         try:
-            root = ET.fromstring(xml_text)
-        except ET.ParseError as exc:
-            return False, f"JUnit XML report could not be parsed: {exc}", empty_counts
+            totals = parse_junit(xml_text)
+        except JUnitError as exc:
+            return False, str(exc), {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
 
-        suites = [root] if root.tag == "testsuite" else list(root.iter("testsuite"))
-        if not suites:
-            return False, "No <testsuite> elements found in JUnit XML report", empty_counts
-
-        def _count(elem, attr: str) -> int:
-            try:
-                return int(elem.get(attr, 0) or 0)
-            except ValueError:
-                return 0
-
-        totals = dict(empty_counts)
-        for suite in suites:
-            for key in totals:
-                totals[key] += _count(suite, key)
-
-        if totals["tests"] == 0:
-            return False, "JUnit XML report collected zero tests", totals
         if totals["failures"] or totals["errors"]:
             return False, (
                 f"{totals['failures']} failure(s) and {totals['errors']} error(s) "
@@ -179,8 +156,8 @@ class IndependentVerifier:
 
         base_files: optional rel_path -> sha256 map of the base_sha tree (restricted
             to the task's allowed_paths). When supplied, changed_paths and the resulting
-            candidate_digest are bound to a genuinely measured diff against that base
-            rather than to the full set of collected files.
+            candidate_digest are bound to measured additions/modifications among collected
+            files. Missing paths are not represented as deletions.
         junit_xml: optional JUnit XML report text. When supplied, test pass/fail is
             determined from independently parsed structured counts instead of a string
             heuristic over raw output.
