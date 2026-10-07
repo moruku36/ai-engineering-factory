@@ -128,7 +128,7 @@ def test_independent_verifier_junit_xml_structured_pass(tmp_path):
     verifier = IndependentVerifier()
     junit_xml = (
         '<?xml version="1.0"?>'
-        '<testsuite name="pytest" tests="3" failures="0" errors="0" skipped="0"></testsuite>'
+        '<testsuite name="pytest" tests="3" failures="0" errors="0" skipped="0"><testcase/><testcase/><testcase/></testsuite>'
     )
     evidence = verifier.verify_candidate(
         task_id="TASK-105",
@@ -175,7 +175,7 @@ def test_independent_verifier_junit_xml_failures_rejected(tmp_path):
     artifacts = collector.collect(src, dst)
 
     verifier = IndependentVerifier()
-    junit_xml = '<testsuite name="pytest" tests="2" failures="1" errors="0" skipped="0"></testsuite>'
+    junit_xml = '<testsuite name="pytest" tests="2" failures="1" errors="0" skipped="0"><testcase><failure/></testcase><testcase/></testsuite>'
     with pytest.raises(VerificationError, match="1 failure"):
         verifier.verify_candidate(
             task_id="TASK-107",

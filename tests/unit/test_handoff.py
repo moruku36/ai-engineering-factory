@@ -277,7 +277,7 @@ class HandoffTests(unittest.TestCase):
                 self.contents["report.xml"] = report
                 self.manifest["outputs"][1].update(size_bytes=len(report), sha256=digest(report))
                 self.write_packet()
-                with patch("orchestrator.core.handoff.ET.fromstring") as parser:
+                with patch("orchestrator.core.junit.ET.iterparse") as parser:
                     with self.assertRaisesRegex(HandoffError, "UTF-8"):
                         self.collect()
                     parser.assert_not_called()

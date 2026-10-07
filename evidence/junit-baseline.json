@@ -1,0 +1,42 @@
+{
+  "hidden_failure": [
+    true,
+    "1 test(s) passed (0 skipped)",
+    {
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "all_skipped": [
+    true,
+    "1 test(s) passed (1 skipped)",
+    {
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1
+    }
+  ],
+  "invalid_count": [
+    true,
+    "1 test(s) passed (0 skipped)",
+    {
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "count_only": [
+    true,
+    "1 test(s) passed (0 skipped)",
+    {
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ]
+}
