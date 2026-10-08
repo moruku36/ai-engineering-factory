@@ -58,7 +58,7 @@ jobs:
 
       - name: Local credential broker contracts (synthetic store only)
         run: |
-          pytest -v tests/unit/test_local_credential_broker.py tests/unit/test_bounded_credential_mock.py
+          pytest -v tests/unit/test_local_credential_broker.py tests/unit/test_bounded_credential_mock.py tests/unit/test_runpod_local_credential.py
 
       - name: Default-off launcher composition contracts (synthetic only)
         run: |
