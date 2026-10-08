@@ -5,10 +5,10 @@ No network, launcher injection, process spawning, service, ACL or account change
 """
 
 import ctypes
-import hashlib
 import getpass
-import sys
+import hashlib
 import os
+import sys
 import time
 from ctypes import wintypes
 from dataclasses import dataclass
