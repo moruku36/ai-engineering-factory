@@ -1,6 +1,6 @@
 # Local credential use: proposal and offline contract mock
 
-Status: PROPOSAL / OFFLINE MOCK ONLY. Reviewed 2026-10-08.
+Status: PROPOSAL / DORMANT WINDOWS CANDIDATE + MOCK-STORE TESTS. Reviewed 2026-10-08.
 No Windows screen use, software installation, credential enrollment, OS credential reads,
 ACL/network/service changes, provider calls, or billable experiments occurred.
 Factory remains EXPERIMENTAL / MANUAL_ONLY.
@@ -122,7 +122,7 @@ provider-specific design. Secure erasure of memory/disk cannot be guaranteed by 
 
 ## Deliverables and verification
 
-The adjacent broker-mock.mjs and broker-mock.test.mjs form a standalone, dependency-free
+The broker-mock.mjs and broker-mock.test.mjs in docs/examples/local-credential-broker/ form a standalone, dependency-free
 contract example. No storage, secret input, actual launcher, networking, subprocess or
 persistent state exists. The trusted test harness can issue/revoke in-memory test handles;
 these functions must never be worker tools. Predictable mock handles and supplied
@@ -143,3 +143,74 @@ Remaining gates: human architecture review; real backend/transport and authentic
 isolation implementation; Windows denial/leak/crash/concurrency tests; repository CI;
 then concrete owner approval for enrollment/persistence and any security setting changes.
 No install is currently needed; official Vault installation remains a conditional plan.
+
+## Windows candidate and staged rollout (2026-10-08 follow-up)
+
+orchestrator/windows_credential_store.py adds a dormant ctypes candidate for
+CredWriteW/ReadW/DeleteW/Free, generic credentials and same-user local persistence.
+Imports and default construction do not load a DLL or call any native API.
+Explicit enabled=True is only a deployment opt-in, not authenticated approval;
+never enable it before the owner authorizes concrete enrollment and access.
+No enrollment CLI, live backend test, service, alternate Windows account or ACL
+change is introduced. Official [CredWriteW](https://learn.microsoft.com/en-us/windows/win32/api/wincred/nf-wincred-credwritew)
+and [CredFree](https://learn.microsoft.com/en-us/windows/win32/api/wincred/nf-wincred-credfree)
+define the binding/lifetime contract; actual Win32 behavior remains unverified.
+
+orchestrator/local_credential_broker.py contains a memory-only fake store and
+an in-process fixed service.status adapter interface. The trusted harness enrolls,
+issues/revokes short single-use references and deletes the store entry. Re-enrollment
+revokes all references. Normal operation returns only ok/denied/failed and discards
+adapter response bodies and exception text. Audit redaction uses an allowlist and
+drops ALL payloads and capabilities, rather than trying to detect key patterns.
+Buffers passed through enrollment/adapter are wiped best-effort; Python/native copies,
+malicious adapters and OS memory inspection are outside this guarantee.
+No model-callable secret getter or management-tool registration is added.
+The internal store read method is trusted implementation code, not an agent tool.
+
+This convenience boundary prevents disclosure through normal broker results/audit;
+it does NOT isolate credentials from same-user arbitrary code or administrators.
+Owner may choose this documented threat scope rather than waiting for absolute isolation.
+Changing identity, ACLs, services or network exposure remains a separate future approval.
+Trusted adapters must themselves avoid printing/logging keys, spawning model-owned code
+or relaying raw output. Simulated task context is not IPC authentication.
+The grant lock handles one-process concurrent replay; persistent/multiprocess authorization,
+transport and durable crash reconciliation remain future work.
+Native persistence has no automatic key expiration: reference TTL is not key TTL.
+
+tests/unit/test_local_credential_broker.py exercises synthetic-only enrollment,
+repeat use without re-enrollment, fixed-operation output, replay, expiry/revocation,
+task binding, prohibited billable/secret/URL/argv/target input, deletion, rotation,
+exceptions/echoed-output rejection, audit redaction, disabled native backend,
+failed enrollment cleanup and same-process concurrent replay. CI explicitly runs these
+on Ubuntu and Windows, in addition to its full pytest suite. No real credential is
+created/read/deleted by these tests. The original JavaScript mock remains a separate
+V8-checked illustration; the existing CI does not run that JavaScript file.
+
+Rollout gates:
+1. Candidate-code review and mock-store CI now; no real credential operations.
+2. After concrete owner confirmation, enroll an EXISTING RunPod key once through a
+   trusted hidden-input utility, retain it locally until owner deletion/rotation,
+   and initially invoke a fixed status check only. No provider key creation implied.
+   Confirm executable/version, private target mapping, endpoints, persistence,
+   deletion route and accepted same-user/admin threat scope together before enrollment.
+3. Extend to the EXISTING bounded RunPod launcher only after reviewing its exact
+   operation set, target, single-trial budget/deadline and cleanup plan. This storage
+   change must not enlarge or renew that authorization, auto-retry a start, create
+   another Pod, or turn a single trial into recurring paid use. If the original
+   approval/deadline cannot be resolved, deny the action. Do not change its files now.
+4. Adapt the EXISTING bounded Mattermost monitor separately: tunnel credential stays
+   process-only by default. Any one-time persistent enrollment needs separate owner
+   confirmation. Keep the five-minute trial deadline and its existing budget/scope;
+   do not start a tunnel, bind ports or add network permissions in this proposal.
+   Expiry invalidates grants and stops monitor work; stopping a process alone is not
+   a guarantee that remote sessions/tunnels were revoked.
+
+Registration/storage permission never authorizes service actions. Every trial grant
+must retain the original service approval's operation list, target, budget and deadline;
+use the earlier of that deadline and the short handle TTL. No existing limits are relaxed.
+Completion/cancel/expiry consumes or revokes references and clears process buffers.
+Stored key remains until explicit deletion/rotation; local deletion is not provider
+revocation. Provider-level revocation and stopping already active workloads/sessions
+require separately scoped confirmation and reconciliation.
+
+No Vault installation or extra package is needed for these candidates.
