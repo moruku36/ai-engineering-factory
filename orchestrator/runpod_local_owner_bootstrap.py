@@ -40,7 +40,7 @@ KEYS = {
 }
 STATUSES = {
     "registered-ready", "registered-check-failed", "cancelled", "denied", "failed",
-    "disabled",
+    "disabled", "already-exists",
 }
 SHA = re.compile(r"[0-9a-f]{64}")
 APPROVAL_ID = re.compile(r"[A-Za-z0-9_-]{16,64}")
@@ -183,8 +183,12 @@ def run(argv, *, root=None, python=None, clock=time.time, loader=None, is_tty=No
 
 
 def main(argv=None):
-    status = run(sys.argv[1:] if argv is None else argv)
+    arguments = sys.argv[1:] if argv is None else argv
+    status = run(arguments)
     print("status: " + status)
+    if list(arguments) == ["--owner-enroll"]:
+        destination = Path(__file__).resolve().parents[2] / "runpod-local-enrollment-result.local.json"
+        destination.write_text(json.dumps({"status": status}), encoding="utf-8")
     return 0 if status in (
         "disabled", "pinned-config-ready-owner-unverified", "registered-ready") else 1
 
