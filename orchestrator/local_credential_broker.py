@@ -69,7 +69,7 @@ class LocalCredentialBroker:
             self._grants.clear()
             try:
                 self._store.write(value)
-            except Exception:
+            except Exception:  # noqa: BLE001 - redact untrusted adapter/store error text
                 self._record("enroll", "failed")
                 return {"status": "failed"}
             finally:
@@ -112,7 +112,7 @@ class LocalCredentialBroker:
                 value = self._store.read()
                 result = self._adapter(value)
                 status = "ok" if result is True else "failed"
-            except Exception:
+            except Exception:  # noqa: BLE001 - redact untrusted adapter/store error text
                 status = "failed"  # never relay exception text/traceback/provider response
             finally:
                 wipe(value)
@@ -125,7 +125,7 @@ class LocalCredentialBroker:
             try:
                 self._store.delete()
                 status = "ok"
-            except Exception:
+            except Exception:  # noqa: BLE001 - redact untrusted adapter/store error text
                 status = "failed"
             self._record("delete", status)
             return {"status": status}

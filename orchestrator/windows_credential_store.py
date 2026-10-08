@@ -65,7 +65,7 @@ class WindowsCredentialStore:
             self._api.CredDeleteW.restype = wintypes.BOOL
             self._api.CredFree.argtypes = [ctypes.c_void_p]
             self._api.CredFree.restype = None
-        except Exception:
+        except (OSError, AttributeError):
             raise StoreError("native backend unavailable") from None
 
     def write(self, value: bytearray) -> None:
@@ -99,9 +99,11 @@ class WindowsCredentialStore:
                 self._api.CredFree(pointer)
 
     def delete(self) -> None:
-        if not self._api.CredDeleteW(self._target, GENERIC, 0):
-            if ctypes.get_last_error() != NOT_FOUND:
-                raise StoreError("credential deletion failed")
+        if (
+            not self._api.CredDeleteW(self._target, GENERIC, 0)
+            and ctypes.get_last_error() != NOT_FOUND
+        ):
+            raise StoreError("credential deletion failed")
 
     def __repr__(self) -> str:
         return "<WindowsCredentialStore redacted>"
