@@ -214,3 +214,25 @@ revocation. Provider-level revocation and stopping already active workloads/sess
 require separately scoped confirmation and reconciliation.
 
 No Vault installation or extra package is needed for these candidates.
+
+## Owner mock UX and bounded adapter contract
+
+See [owner handoff](local-credential-owner-handoff.ja.md) for a short adoption decision.
+The synthetic-only enrollment UI rejects native stores and every value except the
+published dummy fixture. It requires interactive hidden input when manually run;
+automation neither opens nor occupies Windows screens. The demo deletes its mock
+store on exit. This is a UX prototype, not a real enrollment utility.
+
+bounded_credential_mock.py adds fixed runpod.trial.once and mattermost.monitor.once
+stub operations. The trusted immutable approval carries original target, plan, budget
+and deadline. Workers can submit only handle + operation. A single approval issues
+one handle once; denial/revocation cannot refresh the trial authorization. Entry TTL
+is at most 60 seconds; operation deadline is never later than the original deadline,
+and Mattermost is additionally capped at five minutes from grant issuance.
+Running-operation cancel/delete signals a cooperative cancellation event, and output
+becomes cancelled/expired with buffers cleared. This does not prove remote resource
+shutdown; a live adapter must reconcile/clean up existing resources under its approval.
+No real launcher, network, terminal, credential API or service is invoked by these stubs.
+The budget is carried unchanged, not enforced against a provider bill in this mock.
+Do not claim billed-use enforcement until the actual launcher adapter validates and
+tracks the existing approved budget before every side effect.

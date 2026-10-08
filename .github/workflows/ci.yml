@@ -57,7 +57,7 @@ jobs:
 
       - name: Local credential broker contracts (synthetic store only)
         run: |
-          pytest -v tests/unit/test_local_credential_broker.py
+          pytest -v tests/unit/test_local_credential_broker.py tests/unit/test_bounded_credential_mock.py
 
       - name: Execute Full Test Suite (Unit, Integration, Negative)
         run: |
