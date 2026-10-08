@@ -9,6 +9,7 @@ on:
     branches:
       - main
       - "phase/**"
+      - "task/cred-001-local-broker-proposal"
 
 # Read-only PR permissions - never grant write permissions to untrusted workflows
 permissions:
@@ -58,6 +59,11 @@ jobs:
       - name: Local credential broker contracts (synthetic store only)
         run: |
           pytest -v tests/unit/test_local_credential_broker.py tests/unit/test_bounded_credential_mock.py
+
+      - name: Default-off launcher composition contracts (synthetic only)
+        run: |
+          python -I -B docs/examples/local-credential-broker/launcher-bridge-mock.test.py
+          python -I -B docs/examples/local-credential-broker/launcher-bridge-mock.py
 
       - name: Execute Full Test Suite (Unit, Integration, Negative)
         run: |

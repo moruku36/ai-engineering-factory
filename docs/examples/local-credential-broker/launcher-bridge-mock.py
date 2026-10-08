@@ -319,6 +319,9 @@ class TrustedLauncherBridgeMock:
                 or not (fault is None or (type(fault) is str and fault in FAULTS))
             ):
                 return self._result("grant", "denied")
+            # Publish cancellation before preflight so an in-flight cancel is not lost.
+            cancel = self._cancel = threading.Event()
+            issued_at = self._clock()
             try:
                 handle = self._broker.grant_trusted(approval)
             except Exception:  # noqa: BLE001 - invalid/expired/replayed approval
@@ -339,8 +342,9 @@ class TrustedLauncherBridgeMock:
 
             # Fake lifecycle starts only here, with its own cooperative context.
             # The broker's AdapterContext is not reachable and is not reused.
-            cancel = self._cancel = threading.Event()
             deadline = approval.deadline
+            if approval.operation == MATTERMOST:
+                deadline = min(deadline, issued_at + MM_MONITOR_CAP)
             context = _LifecycleContext(cancel, self._clock, deadline)
             if fault == "cancel":
                 cancel.set()

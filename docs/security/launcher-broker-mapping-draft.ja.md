@@ -4,8 +4,8 @@
 
 - ブランチ: `proposal/launcher-mock-bridge-20261008`
 - ベース: PR31 head `357ebec63d12e4c72e90ced3327f13528064afa5`(`.git` の ref ファイルで一致を確認)
-- 追加ファイルはこの文書と `docs/examples/local-credential-broker/launcher-bridge-mock.py` /
-  `launcher-bridge-mock.test.py` の 3 点のみ。PR31 の既存ファイルと workflow は未変更。
+- 初期追加ファイルはこの文書と `docs/examples/local-credential-broker/launcher-bridge-mock.py` /
+  `launcher-bridge-mock.test.py` の 3 点のみ。初期実装ではPR31の既存ファイルとworkflowは未変更。今回レビューで既存CIのstacked PR対象とsynthetic bridgeテストstepを追加しました。
 
 ## 1. 今回の成果物が示すこと/示さないこと
 
@@ -215,3 +215,18 @@ C:\path\to\python.exe -I -B C:\path\to\checkout\docs\examples\local-credential-b
    課金上限の検証。
 7. 身元認証(同一プロセス・同一ユーザーのコードを防げない点)と OS レベル隔離の要否。
 8. Win32 保存を有効化する場合の保持期間・ACL・削除手順。
+
+## 7. PR31/32 interfaceレビューでの補正
+
+- 既存CIはmain/phaseだけを対象にしていたため、PR32のstacked baseでは起動しなかった。
+  PR32内で対象baseを追加し、12件のbridge unittestと既定OFF CLIをUbuntu/Windowsで実行する。
+- MM fake lifecycleの総期限もgrant時点+300秒と元承認期限の早い方にそろえた。
+  prepareの300秒とmonitorの300秒は別phaseの上限であり、合計300秒を本来の
+  lifecycle仕様だとは扱わない。ただし現PR31は総期限300秒という保守的な制限のため、
+  fakeのphaseもその総期限内に収める。準備300+監視300+猶予32秒をliveで実現する
+  phase policyは未実装で、ここで承認範囲を延長しない。
+- broker preflight中のcancelをfake開始時のEvent再作成で取り消さないよう補正。
+- 5role名とstr/hex型の不足は既存説明どおり。1個のmock値を共有することは、実5roleを
+  一つのキーに置き換えてよいという意味ではない。役割ごとの登録・保持方針は別途確認。
+- 追加テストは総期限/元期限の継承、prepareとmonitorの別phase、
+  preflight中のcancel維持。実秘密、実Win32、実launcherは使わない。

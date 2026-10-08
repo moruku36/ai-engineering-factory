@@ -308,5 +308,59 @@ class LauncherBridgeMockTest(unittest.TestCase):
         self.assertEqual(len(self.prompts), 1)
 
 
+    def test_mm_fake_inherits_grant_total_cap_and_earlier_owner_deadline(self):
+        harness = self.enrolled()
+        seen = []
+        def shape(context, fault):
+            seen.append(context)
+            return True, {"active_zero": True, "protected_zero": True}
+        with mock.patch.dict(bridge._SHAPES, {bridge.MATTERMOST: shape}):
+            granted = replace(approval(bridge.MATTERMOST), deadline=1000.0)
+            self.assertEqual(
+                harness.run_once(granted, trusted_task="synthetic-task"), {"status": "ok"}
+            )
+            self.assertEqual(seen[0]._deadline, 400.0)
+            granted = replace(granted, approval_id="second", deadline=150.0)
+            self.assertEqual(
+                harness.run_once(granted, trusted_task="synthetic-task"), {"status": "ok"}
+            )
+            self.assertEqual(seen[1]._deadline, 150.0)
+
+    def test_mm_preparation_and_monitor_are_distinct_under_total_cap(self):
+        cancel = bridge.threading.Event()
+        context = bridge._LifecycleContext(cancel, lambda: self.now[0], 400.0)
+        preparation = context.phase(bridge.MM_PREPARATION_CAP)
+        self.assertEqual(preparation._deadline, 400.0)
+        self.now[0] = 350.0
+        monitor = context.phase(bridge.MM_MONITOR_CAP)
+        self.assertIsNot(preparation, monitor)
+        self.assertEqual(monitor._deadline, 400.0)
+        self.now[0] = 400.0
+        self.assertTrue(monitor.stopped())
+
+    def test_cancel_during_broker_preflight_is_not_reset_before_fake(self):
+        from concurrent.futures import ThreadPoolExecutor
+
+        harness = self.enrolled()
+        entered, release = bridge.threading.Event(), bridge.threading.Event()
+        original = bridge.BoundedMockBroker.execute
+        def paused(broker, request, *, trusted_task):
+            entered.set()
+            if not release.wait(3):
+                raise AssertionError("test release timeout")
+            return original(broker, request, trusted_task=trusted_task)
+        with mock.patch.object(bridge.BoundedMockBroker, "execute", paused):
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(
+                    harness.run_once, approval(), trusted_task="synthetic-task"
+                )
+                self.assertTrue(entered.wait(3))
+                harness.cancel_trusted()
+                release.set()
+                self.assertEqual(future.result(timeout=3), {"status": "cancelled"})
+        self.assertTrue(all(harness.cleanup_snapshot_trusted().values()))
+        self.assert_public_safe(harness)
+
+
 if __name__ == "__main__":
     unittest.main()
