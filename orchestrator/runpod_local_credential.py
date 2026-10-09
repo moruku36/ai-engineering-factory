@@ -8,6 +8,8 @@ import ctypes
 import getpass
 import hashlib
 import os
+import re
+import subprocess
 import sys
 import time
 from ctypes import wintypes
@@ -16,9 +18,22 @@ from pathlib import Path
 
 from orchestrator.windows_credential_store import WindowsCredentialStore, wipe
 
-ITEM = "AIEngineeringFactory/RunPod/provider/v1"
+ITEM = "AIEngineeringFactory/RunPod/provider/v2"
 OPERATION = "runpod.credential.local-use.once"
 PIN_PATHS = ("runpod_local_credential.py", "windows_credential_store.py")
+
+
+def fixed_item_exists():
+    """Metadata-only check. Never read or return a credential blob or raw output."""
+    executable = Path(os.environ["SystemRoot"]) / "System32" / "cmdkey.exe"
+    result = subprocess.run(
+        [str(executable), "/list:" + ITEM], capture_output=True,
+        text=True, errors="replace", timeout=10, check=False,
+    )
+    if result.returncode:
+        raise RuntimeError("credential metadata unavailable")
+    pattern = r"(?m)^\s*[^:\r\n]+:\s*(?:LegacyGeneric:target=)?" + re.escape(ITEM) + r"\s*$"
+    return re.search(pattern, result.stdout) is not None
 
 
 def current_windows_sid():
@@ -100,7 +115,7 @@ class RunPodLocalCredentialFlow:
 
     def __init__(
         self, scope, *, enabled=False, store=None, sid_reader=current_windows_sid,
-        pin_reader=source_pins, clock=time.time
+        pin_reader=source_pins, clock=time.time, exists_reader=fixed_item_exists
     ):
         self._scope = scope
         self._enabled = enabled is True
@@ -108,6 +123,7 @@ class RunPodLocalCredentialFlow:
         self._sid_reader = sid_reader
         self._pin_reader = pin_reader
         self._clock = clock
+        self._exists_reader = exists_reader
 
     def _allowed(self, *, deleting=False):
         scope = self._scope
@@ -129,6 +145,8 @@ class RunPodLocalCredentialFlow:
         try:
             if not self._allowed():
                 return {"status": "denied"}
+            if self._exists_reader():
+                return {"status": "already-exists"}
             answer = read_hidden("Existing RunPod API key (hidden; blank cancels): ")
             if not answer:
                 return {"status": "cancelled"}
@@ -138,6 +156,8 @@ class RunPodLocalCredentialFlow:
             del answer
             if not self._allowed():
                 return {"status": "denied"}
+            if self._exists_reader():
+                return {"status": "already-exists"}
             self._backing_store().write(value)
             return {"status": "registered"}
         except (KeyboardInterrupt, EOFError):

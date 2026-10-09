@@ -13,7 +13,7 @@ def fixture(*, enabled=True, store=None):
     store = store or MockCredentialStore()
     flow = RunPodLocalCredentialFlow(
         scope, enabled=enabled, store=store, sid_reader=lambda: "synthetic-sid",
-        pin_reader=lambda: {"dummy": "pin"}, clock=lambda: now[0]
+        pin_reader=lambda: {"dummy": "pin"}, clock=lambda: now[0], exists_reader=lambda: False
     )
     return flow, store, now, scope
 
@@ -107,3 +107,34 @@ def test_owner_ui_wiring_uses_hidden_input_and_returns_status_only(monkeypatch):
     assert not prompts
     assert module.run_owner_enrollment(scope, enabled=True) == {"status": "registered-ready"}
     assert len(prompts) == 1
+
+
+def test_existing_item_refuses_before_hidden_input_and_write():
+    flow, _, _, _ = fixture()
+    flow._exists_reader = lambda: True
+    def forbidden(prompt):
+        raise AssertionError("must not prompt for an existing target")
+    assert flow.enroll_owner(forbidden) == {"status": "already-exists"}
+    assert flow.local_use_once(approved=True) == {"status": "failed"}
+
+
+def test_item_created_during_input_refuses_before_write():
+    flow, _, _, _ = fixture()
+    checks = iter([False, True])
+    flow._exists_reader = lambda: next(checks)
+    assert flow.enroll_owner(lambda prompt: "synthetic-fixture") == {"status": "already-exists"}
+    assert flow.local_use_once(approved=True) == {"status": "failed"}
+
+
+def test_presence_matches_native_and_cmdkey_targets_but_not_heading(monkeypatch):
+    from types import SimpleNamespace
+
+    from orchestrator import runpod_local_credential as module
+    monkeypatch.setenv("SystemRoot", "synthetic-root")
+    for text, expected in [
+        ("Currently stored credentials for " + module.ITEM + ":", False),
+        ("    Target: " + module.ITEM + "\n", True),
+        ("    Target: LegacyGeneric:target=" + module.ITEM + "\n", True),
+    ]:
+        monkeypatch.setattr(module.subprocess, "run", lambda *a, _fixture_output=text, **kw: SimpleNamespace(returncode=0, stdout=_fixture_output))
+        assert module.fixed_item_exists() is expected
