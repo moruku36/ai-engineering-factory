@@ -2,43 +2,46 @@
 
 [English](README.md) | [日本語](README.ja.md)
 
-An experimental governance layer for AI-assisted software development, combining isolated execution, evidence, phase contracts, and human-approved pull requests. Current operation is Experimental / MANUAL_ONLY.
+**Experimental / MANUAL_ONLY** · Python 3.11+
 
-## Current capabilities
+## 1. What it does
 
-The factory governs bounded Builder, Tester, and Reviewer work with task profiles, command registries, isolated execution, evidence, and approval boundaries. It is experimental and operates in MANUAL_ONLY mode; it is not a fully autonomous production development platform.
+A task, verification, and approval framework for edits made by a person or an external agent. It does not write code autonomously. Flow: task/edit -> checks -> PR -> human approval. Nothing is merged or deployed automatically.
 
-Read [PROJECT_STATE.md](PROJECT_STATE.md) for current limits and the [quickstart](docs/getting-started.md) for the supported workflow. Linux container isolation is CI-verified with Docker; Windows does not support that Linux-container isolation path, and macOS expectations are not equivalent to CI verification.
+## 2. Structure
 
-## Local checks
+- `orchestrator/`: state, policy, execution, approval, GitHub checks
+- `schemas/`, `tasks/`, `config/`, `tests/`, `scripts/`, `.github/`: contracts, templates, CI
+- `docs/`: details. Databases, logs, and credentials stay outside the repo.
+
+## 3. Implemented, unimplemented, unverified
+
+**Implemented:** task schema and scheduling; offline Linux container execution, collection, and an independent verifier; single-use signed human approvals with a journal; branch and PR API. Receipts record only `COLLECTED`, never `VERIFIED` or `COMPLETE`. Windows credential and RunPod startup code is off by default and needs separate human approval.
+
+**Not provided:** automatic merge or deploy; native Claude Code or Codex adapters; Antigravity is blocked in the current Factory.
+
+**Limits and unverified:** complete-diff handling is limited, and handoff rejects such tasks. Isolation is Linux-only. CI covers ordinary Ubuntu and Windows; macOS and WSL2 are unverified. Synthetic tests are not proof of live keys, GPUs, Windows Hello, or Mattermost. Stopping a process does not prove Pod deletion or billing has stopped.
+
+### Safety model
+
+High-impact changes need human approval. The Factory fails closed: if a required check or control is unavailable, it stops instead of silently falling back to a weaker mode. Secrets stay out of chat and logs.
+
+## 4. Shortest start
+
+Use a Python 3.11+ virtualenv and activate it as described in the quickstart.
 
 ```bash
+git clone https://github.com/moruku36/ai-engineering-factory.git
+cd ai-engineering-factory
 pip install -e ".[dev]"
 python -m orchestrator.cli doctor
-ruff check orchestrator scripts tests
-python scripts/secret_scan.py
-python scripts/audit_dependencies.py
-pytest -v tests/
+python -m orchestrator.cli demo --task-file tasks/templates/basic-task.yaml --worktree .
 ```
 
-The doctor command's exit code 2 can mean a healthy MANUAL_ONLY environment as documented in the original guide.
+`doctor` exit code 2 is expected when checks pass (MANUAL_ONLY). The demo only checks trusted, existing edits: no AI launch, isolation, path enforcement, or independent evidence.
 
-[Architecture](ARCHITECTURE.md) · [Operations](OPERATIONS.md) · [Security](SECURITY.md) · [Case study](docs/case-studies/web-security-control-lab.md).
+## 5. Docs
 
+[Project state](PROJECT_STATE.md) · [Architecture](ARCHITECTURE.md) · [Operations](OPERATIONS.md) · [Security](SECURITY.md) · [Quickstart](docs/getting-started.md) · [Adapters](docs/adapters/README.md) · [Compatibility](docs/compatibility/matrix.md) · [Handoff](docs/operations/HANDOFF_V01.md) · [Startup credentials (Japanese)](docs/security/runpod-startup-credential.ja.md)
 
-## Contents
-
-- [ARCHITECTURE.md](ARCHITECTURE.md)
-- [OPERATIONS.md](OPERATIONS.md)
-- [PROJECT_STATE.md](PROJECT_STATE.md)
-- [SECURITY.md](SECURITY.md)
-- [config/](config)
-- [docs/](docs)
-- [hooks/](hooks)
-- [orchestrator/](orchestrator)
-
-## Detailed documentation
-
-For offline manifest and receiver byte checks, see [Local artifact handoff v0.1](docs/operations/HANDOFF_V01.md). This bounded tool records COLLECTED only; independent acceptance verification remains separate.
-
-The [Japanese guide](README.ja.md) retains the complete original setup instructions, configuration, examples, project status, and limitations. Supporting documents keep their existing language.
+[MIT License](LICENSE)
