@@ -191,3 +191,66 @@ def test_post_read_pin_or_config_change_wipes_before_consumer(prepared):
     with pytest.raises(startup.StartupRefused):
         reader.read()
     assert calls == ["read"] and value == bytearray(len(value))
+
+
+def value_reader(f, value, *, wipe_fn=wipe):
+    calls = []
+
+    def read():
+        calls.append("read")
+        return value
+
+    credential = SimpleNamespace(
+        current_windows_sid=lambda: "synthetic-sid",
+        wipe=wipe_fn,
+        WindowsCredentialStore=lambda *a, **k: pytest.fail("native store forbidden"),
+    )
+    reader = startup.ProviderOnce(
+        f.data,
+        revalidate=lambda: f.data,
+        claims=f.claims,
+        credential=credential,
+        enabled=True,
+        clock=lambda: 1001,
+        monotonic=lambda: 0,
+        store=SimpleNamespace(read=read),
+    )
+    return reader, calls
+
+
+WRONG_RETURN_TYPES = {
+    "bytes": lambda: b"synthetic-provider-credential",
+    "None": lambda: None,
+    "str": lambda: "synthetic-provider-credential",
+    "int": lambda: 123,
+    "bytearray-subclass": lambda: type("Sub", (bytearray,), {})(b"synthetic-provider-credential"),
+}
+
+
+def tolerant_wipe(value):
+    if isinstance(value, bytearray):
+        wipe(value)
+
+
+@pytest.mark.parametrize("wipe_fn", [wipe, tolerant_wipe], ids=["shared-wipe", "tolerant-wipe"])
+@pytest.mark.parametrize("label", sorted(WRONG_RETURN_TYPES))
+def test_wrong_return_type_keeps_fixed_refusal_and_consumes_claim(prepared, label, wipe_fn):
+    value = WRONG_RETURN_TYPES[label]()
+    reader, calls = value_reader(prepared, value, wipe_fn=wipe_fn)
+    with pytest.raises(startup.StartupRefused) as error:
+        reader.read()
+    assert str(error.value) == "CREDENTIAL_REFUSED"
+    assert error.value.__cause__ is None and error.value.__suppress_context__ is True
+    assert "synthetic-provider-credential" not in repr(error.value) + repr(error.value.args)
+    assert calls == ["read"] and len(list(prepared.claims.iterdir())) == 1
+    with pytest.raises(startup.StartupRefused, match="CREDENTIAL_REFUSED"):
+        reader.read()  # no retry after the consumed claim
+    assert calls == ["read"]
+
+
+def test_bytearray_subclass_is_refused_and_wiped(prepared):
+    value = WRONG_RETURN_TYPES["bytearray-subclass"]()
+    reader, calls = value_reader(prepared, value)
+    with pytest.raises(startup.StartupRefused, match="CREDENTIAL_REFUSED"):
+        reader.read()
+    assert calls == ["read"] and value == bytearray(len(value))
