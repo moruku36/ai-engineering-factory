@@ -260,4 +260,5 @@ class ProviderOnce:
         except Exception:  # noqa: BLE001 - never expose native/key exceptions
             raise StartupRefused("CREDENTIAL_REFUSED") from None
         finally:
-            self.credential.wipe(value)
+            if isinstance(value, bytearray):
+                self.credential.wipe(value)
