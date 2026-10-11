@@ -1,6 +1,6 @@
 # Governance roadmap
 
-*Proposal only. No deadlines and no automatic release. The current change implements only G0 (documentation and display name). G1-G5 are not implemented.*
+*Proposal only. No deadlines and no automatic release. G0 (documentation and display name) is complete and merged in [PR #37](https://github.com/moruku36/ai-engineering-factory/pull/37). G1-G5 are not implemented. The current change is planning text only, and the TDD additions below are proposals.*
 
 ## Source and status
 
@@ -8,17 +8,17 @@ Ideas are adapted from Shun Kimura, [AI Execution Accountability Framework — D
 
 Ideas used: start from the action, then risk, needed knowledge and accountable people ([pp. 9-10](https://www.docswell.com/s/k1-c/Z9NDXY-2026-10-10-060401#p9)); separate actor, reviewer and owner as risk grows ([pp. 26-28](https://www.docswell.com/s/k1-c/Z9NDXY-2026-10-10-060401#p26)); the human roles (actor, reviewer, owner) are described on [pp. 26-28](https://www.docswell.com/s/k1-c/Z9NDXY-2026-10-10-060401#p26); connect policy to qualification, permission and evidence ([p. 31](https://www.docswell.com/s/k1-c/Z9NDXY-2026-10-10-060401#p31)).
 
-## Current state (main `2525cbbdaf17947dcdd20943afb9098b8cb30c5e`)
+## Current state (main `8ef30734d041c7fa817c7dc5d4209fa2d31c8a8d`)
 
-Base: full pinned main SHA [`2525cbbdaf17947dcdd20943afb9098b8cb30c5e`](https://github.com/moruku36/ai-engineering-factory/tree/2525cbbdaf17947dcdd20943afb9098b8cb30c5e). For current project status see [PROJECT_STATE.md](../../PROJECT_STATE.md). For the approved-container adapter and its limits see [APPROVED_CONTAINER_LOOP.md](../operations/APPROVED_CONTAINER_LOOP.md).
+Base: full pinned main SHA [`8ef30734d041c7fa817c7dc5d4209fa2d31c8a8d`](https://github.com/moruku36/ai-engineering-factory/tree/8ef30734d041c7fa817c7dc5d4209fa2d31c8a8d). Since the earlier baseline (`2525cbb`) only G0 display and documentation changed; the implementation statements below were rechecked and are unchanged. For current project status see [PROJECT_STATE.md](../../PROJECT_STATE.md). For the approved-container adapter and its limits see [APPROVED_CONTAINER_LOOP.md](../operations/APPROVED_CONTAINER_LOOP.md).
 
 Implemented: task JSON Schema, DAG, one risk enum (`low/medium/high/critical`), command/path policy, offline Linux containers, collection and IndependentVerifier (complete-diff limits remain), ApprovalManager with single-use HMAC tokens, ApproverRegistry identity/action permissions, authenticated CLI approve (`cmd_approve`), SQLite ledger/journal, GitHub checks, COLLECTED-only receipts, and default-off Windows/RunPod code. HMAC token integrity/single-use and ApproverRegistry identity/action permission are distinct mechanisms. Protected registry and key provisioning in a real deployment is still required. Status is Experimental/MANUAL_ONLY; evidence is synthetic/CI, not live keys, GPU, Windows Hello, or Mattermost.
 
 AI Builder/Tester/Reviewer in AGENTS are engineering phases, separate from the draft's human Actor/Reviewer/Owner. Existing role/key authentication is not qualification or an automatic separation-of-duties guarantee. No unified risk-reason, accountability, or qualification admission contract exists.
 
-## Proposed stages (not implemented)
+## Stages (G0 complete; G1-G5 proposed)
 
-**G0 — Naming and documents.** Display name, roadmap, ADR, stale-doc correction. Acceptance permits display-only updates to source strings and tests, but public identifiers and API behavior are preserved. Done when these documents merge and no code identifier or API behavior changes.
+**G0 — Naming and documents.** Display name, roadmap, ADR, stale-doc correction. Acceptance permits display-only updates to source strings and tests, but public identifiers and API behavior are preserved. Done when these documents merge and no code identifier or API behavior changes. Completed in PR #37.
 
 **G1 — Complete diff and assessment.** A complete-diff contract with negative tests for deletion, mode, rename and unknown base; receipt rejection stays until proven. Add a separately versioned governance assessment bound to task, candidate and policy, recording action, data, external impact, reversibility, reasons, unknowns and the human assessor. The existing risk enum stays; the draft's "Moderate" maps explicitly to `medium`, as a boundary and not a blanket replacement. `schema_version` 2020-12 is the JSON Schema draft, not a product contract version. Done when each negative case is rejected in tests and a tampered assessment is rejected.
 
@@ -29,6 +29,15 @@ AI Builder/Tester/Reviewer in AGENTS are engineering phases, separate from the d
 **G4 — Explainable reports and pilot.** JSON and human reports connect task, reason, review, approval, execution and PR, preserving unknowns and the COLLECTED/verified/completed distinctions; a hash alone is not authenticity. Run a small pilot measuring review time, retries and restore. Done when a report reconstructs one pilot run without hidden gaps and the measurements are recorded.
 
 **G5 — One live adapter.** Only after prior gates, one bounded adapter at a time, based on actual official capability, with scope, budget, time, stopping, idempotent reconciliation of uncertain outcomes and real external cleanup. Credential and RunPod paths stay default off. No model proxy, new UI, auto-merge or production guarantees. Done when a rehearsal on the real service shows cleanup and reconciliation.
+
+## Supplement: TDD evidence proposals (not implemented)
+
+These are our proposals, prompted by a preprint whose peer review/acceptance is unconfirmed; see the [research survey](../research/tdd-governance-2604.26615.md), where the details reside. They are opt-in, have no dates, and add to the stages above without replacing them. All security boundaries stay unchanged. G3 is unchanged: test quality and human qualification remain separate.
+
+- **G1:** a versioned TDD micro-cycle evidence record, separate from task phase/status, built on the complete-diff contract rather than a second diff engine. It binds task and approved requirement version, base SHA, full candidate and suite digests, test IDs, expected RED reason, runner/config/dependency provenance, measured executions, and stop/exception reasons. The same approved criterion must fail on the known base and pass on the candidate. The record is opt-in; for docs-only changes, behavior-preserving refactors and known-legacy failures, applicability, non-applicability or a declared exception is recorded explicitly, with no invented RED tests or automatic waivers. Not every docs change requires RED; see the [survey](../research/tdd-governance-2604.26615.md) for details. Done when missing RED, different base, different suite, stale candidate, undiscovered tests, all-skipped runs and runner failure reported as success are rejected, alongside the deletion/mode/rename/unknown-base cases.
+- **G2:** during GREEN or repair the worker cannot weaken accepted criteria; the approved acceptance suite is read-only. Changes need a separate reason, review, new version, reapproval and revalidation. Track fixtures, snapshots, expected values, skip/xfail, discovery, conftest, plugins, command arguments, dependencies, thresholds and generated evaluation data, and record oracle source, executor and approver separately. A change to the criteria invalidates the affected RED/GREEN evidence, review and approval. Done when swapped, deleted, renamed, shrunk, all-skipped or stale criteria are rejected and only a newly approved version passes.
+- **G4:** a pilot comparing the existing workflow, TDD prompt only, engine evidence only, and both, under the same security boundary, with a common independent oracle and reported denominators, failures and costs. If only some arms are affordable, contribution separation is unverified. Suite pass rate alone is not the main outcome. Done when all trials are reported and the comparison can be rechecked.
+- **G5:** only after the gates, a bounded official adapter with a repair scope inside existing attempt limits, a trusted persistent ledger of failure signature, patch digest, effective change and cumulative attempts, time and cost, and stops on repeated failure, no-op, budget, scope violation or unknown. A restart or a new task cannot implicitly reset budget or approval; uncertain external outcomes are reconciled before retry. Semantic patch equivalence is advisory until it is defined and verified, and is not an LLM hard gate. N=3 is not an endorsed budget. Done when stop and restart behavior is reproducible and unknown outcomes never cause double execution.
 
 ## Preconditions
 
