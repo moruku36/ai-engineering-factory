@@ -46,6 +46,6 @@ python -m orchestrator.cli demo --task-file tasks/templates/basic-task.yaml --wo
 
 [プロジェクト状態](PROJECT_STATE.md) ・ [アーキテクチャ](ARCHITECTURE.md) ・ [運用](OPERATIONS.md) ・ [セキュリティ](SECURITY.md) ・ [クイックスタート](docs/getting-started.md) ・ [Adapter](docs/adapters/README.md) ・ [互換性](docs/compatibility/matrix.md) ・ [引き渡し](docs/operations/HANDOFF_V01.ja.md) ・ [起動時の認証情報](docs/security/runpod-startup-credential.ja.md)
 
-今後の計画（未実装）: [ガバナンス・ロードマップ](docs/architecture/governance-roadmap.ja.md)
+今後の計画（未実装）: [ガバナンス・ロードマップ](docs/architecture/governance-roadmap.ja.md) ・ [TDD研究サーベイ](docs/research/tdd-governance-2604.26615.ja.md)
 
 [MIT License](LICENSE)
