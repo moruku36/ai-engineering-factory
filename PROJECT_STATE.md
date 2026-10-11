@@ -48,7 +48,7 @@ PR #7時点ではOS隔離や本人認証付き承認が未実装でした。そ�
    Unit / Integration TestがPassしていても、すべてのOS、Antigravity Release、Agent Model、Repository Layout、Failure Modeを検証済みという意味ではありません。
 
 3. **Antigravity ExecutionはHost Environmentに依存します。**  
-   Native Sessionには互換性のあるLocal Runtime Componentと、利用者自身のAuthentication / Quotaが必要です。Factoryは存在しないSDK / CLI Capabilityを仮定・捏造してはいけません。
+   Native Sessionには互換性のあるLocal Runtime Componentと、利用者自身のAuthentication / Quotaが必要です。AI Governance Controlは存在しないSDK / CLI Capabilityを仮定・捏造してはいけません。
 
 4. **High-impact OperationはHuman Approval対象です。**  
    Cloud Infrastructure Apply / Destroy、IAM / Credential変更、Public Exposure、Deployment、Release、Git History Rewrite、Mergeには明示的なHuman Approvalを必要とします。
@@ -80,3 +80,12 @@ Status Document同士で内容が食い違う場合は、次の順序で判断�
 - 重要なRepositoryへ適用する前にDisposable RepositoryでReal Agent Runを検証する
 - Multi-Agentによる生産性向上を主張する前に、Wall-clock Time、Retry Rate、CI Failure、Human Review Time、Cost per Merged Taskなどの実測値を蓄積する
 
+
+## 名称変更とガバナンス・ロードマップ（G0）
+
+- 現在の名称は **AI Governance Control**（旧名: AI Engineering Factory）です。
+- 今回の変更で完了したのは **G0（文書と表示名のみ）** です。
+- G1〜G5 はロードマップ上の提案であり、**未実装**です。期限や自動リリースはありません。
+- ロードマップ（[英語](docs/architecture/governance-roadmap.md) / [日本語](docs/architecture/governance-roadmap.ja.md)）と [ADR 0004](docs/adr/0004-product-name-and-governance-roadmap.md)（英語）を参照してください。
+- 運用状態は引き続き `MANUAL_ONLY` で、ランタイムの識別子（パッケージ名、CLI、環境変数、パス、スキーマID、API名など）は変更していません。
+- これは安全性や本番利用適性を保証するものではありません。

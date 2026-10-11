@@ -1,7 +1,7 @@
-# Using Codex (or other CLI coding agents) with the Factory
+# Using Codex (or other CLI coding agents) with the AI Governance Control
 
 The same pattern as [Claude Code](claude-code.md) applies to Codex, or any
-other CLI/SDK-driven coding agent: the Factory does not run the agent for
+other CLI/SDK-driven coding agent: the AI Governance Control does not run the agent for
 you, it verifies and gates whatever the agent produced.
 
 ## Recommended flow
@@ -17,9 +17,9 @@ you, it verifies and gates whatever the agent produced.
 
 2. Run your Codex CLI/SDK against `worktree_path`, scoped to the task's
    `allowed_paths`. Let it exit when done — no live connection to the
-   Factory is required.
+   AI Governance Control is required.
 
-3. Hand the resulting worktree to the Factory for verification:
+3. Hand the resulting worktree to the AI Governance Control for verification:
    - Quick, non-isolated check while iterating: [`ManualAdapter`](manual.md).
    - Full isolated verification against untrusted output:
      [Getting Started §6](../getting-started.md#6-the-real-isolation--verification-path)

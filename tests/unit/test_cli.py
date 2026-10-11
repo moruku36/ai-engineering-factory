@@ -28,7 +28,7 @@ def test_cli_doctor_runs(capsys):
     exit_code = main()
     assert exit_code == 2
     captured = capsys.readouterr()
-    assert "=== Factory System Doctor ===" in captured.out
+    assert "=== AI Governance Control System Doctor ===" in captured.out
     assert "Python:" in captured.out
     assert "MANUAL_ONLY" in captured.out
 

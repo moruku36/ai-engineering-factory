@@ -8,7 +8,7 @@ worktree you give it, with no network or filesystem isolation. It is what
 
 Use it when:
 
-- You're trying the Factory out for the first time.
+- You're trying the AI Governance Control out for the first time.
 - The code you're validating is already trusted (e.g. your own worktree,
   CI on a repo you control).
 - You want deterministic, fast local runs without Docker.

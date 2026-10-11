@@ -2,7 +2,7 @@
 
 If you're wiring a specific agent runtime (your own agent, an internal
 tool, or a transport not covered by `manual.md`/`claude-code.md`/`codex.md`)
-into the Factory, subclass `ExecutionAdapter`:
+into the AI Governance Control, subclass `ExecutionAdapter`:
 
 ```python
 from typing import Any
@@ -44,7 +44,7 @@ class MyAgentAdapter(ExecutionAdapter):
         }
 ```
 
-## What the Factory does with your adapter's output
+## What the AI Governance Control does with your adapter's output
 
 Your adapter's `collect_results` is treated as an **unverified claim**, not
 evidence. The control plane still:

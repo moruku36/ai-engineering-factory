@@ -1,7 +1,7 @@
 # ローカル成果物受渡し v0.1
 
 承認済み個人AIチーム計画の最初の小さな実装として、manifestと受け手側のbytes照合を追加した。
-FactoryはExperimental / MANUAL_ONLYのまま。外部agent、クラウド実行、model切替や保存サービスは追加しない。
+AI Governance ControlはExperimental / MANUAL_ONLYのまま。外部agent、クラウド実行、model切替や保存サービスは追加しない。
 
 ## 手順
 

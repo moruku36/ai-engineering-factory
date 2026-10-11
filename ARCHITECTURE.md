@@ -23,7 +23,7 @@
 
 ## 1. システムアーキテクチャ全体像
 
-AI Engineering Factory は、自律型 AI エージェントのエンジニアリング作業を、決定論的かつ安全に管理するためのオーケストレーション基盤です。
+AI Governance Control は、自律型 AI エージェントのエンジニアリング作業を、決定論的かつ安全に管理するためのオーケストレーション基盤です。
 
 ### 全体データフロー & コンポーネント関連図
 
@@ -265,5 +265,5 @@ phase_contract:
   - **Human Operator Credential**: Web UI / Passkey / 2FA 等による人間専用の権限。
 - **Control Plane による二重防護 (Defense-in-Depth)**:
   - GitHub Ruleset による Direct Push / Force Push / CI 未通過のブロック。
-  - Factory 内部の `StateLedger` および `PolicyEngine` において、`automated_pr_merge` は `HARD_DENY` とし、人間承認トークンが検証・消費されない限りタスク状態は `DONE` に遷移しない。
+  - AI Governance Control 内部の `StateLedger` および `PolicyEngine` において、`automated_pr_merge` は `HARD_DENY` とし、人間承認トークンが検証・消費されない限りタスク状態は `DONE` に遷移しない。
 

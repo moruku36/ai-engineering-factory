@@ -1,4 +1,4 @@
-# AI Engineering Factory
+# AI Governance Control
 
 [English](README.md) | [日本語](README.ja.md)
 
@@ -7,6 +7,8 @@
 ## 1. What it does
 
 A task, verification, and approval framework for edits made by a person or an external agent. It does not write code autonomously. Flow: task/edit -> checks -> PR -> human approval. Nothing is merged or deployed automatically.
+
+The display name changed (formerly AI Engineering Factory); the repository slug, package, and CLI are unchanged.
 
 ## 2. Structure
 
@@ -18,13 +20,13 @@ A task, verification, and approval framework for edits made by a person or an ex
 
 **Implemented:** task schema and scheduling; offline Linux container execution, collection, and an independent verifier; single-use signed human approvals with a journal; branch and PR API. Receipts record only `COLLECTED`, never `VERIFIED` or `COMPLETE`. Windows credential and RunPod startup code is off by default and needs separate human approval.
 
-**Not provided:** automatic merge or deploy; native Claude Code or Codex adapters; Antigravity is blocked in the current Factory.
+**Not provided:** automatic merge or deploy; native Claude Code or Codex adapters; Antigravity is blocked in the current product.
 
 **Limits and unverified:** complete-diff handling is limited, and handoff rejects such tasks. Isolation is Linux-only. CI covers ordinary Ubuntu and Windows; macOS and WSL2 are unverified. Synthetic tests are not proof of live keys, GPUs, Windows Hello, or Mattermost. Stopping a process does not prove Pod deletion or billing has stopped.
 
 ### Safety model
 
-High-impact changes need human approval. The Factory fails closed: if a required check or control is unavailable, it stops instead of silently falling back to a weaker mode. Secrets stay out of chat and logs.
+High-impact changes need human approval. The product fails closed: if a required check or control is unavailable, it stops instead of silently falling back to a weaker mode. Secrets stay out of chat and logs.
 
 ## 4. Shortest start
 
@@ -43,5 +45,7 @@ python -m orchestrator.cli demo --task-file tasks/templates/basic-task.yaml --wo
 ## 5. Docs
 
 [Project state](PROJECT_STATE.md) · [Architecture](ARCHITECTURE.md) · [Operations](OPERATIONS.md) · [Security](SECURITY.md) · [Quickstart](docs/getting-started.md) · [Adapters](docs/adapters/README.md) · [Compatibility](docs/compatibility/matrix.md) · [Handoff](docs/operations/HANDOFF_V01.md) · [Startup credentials (Japanese)](docs/security/runpod-startup-credential.ja.md)
+
+Future plans (not implemented): [Governance roadmap](docs/architecture/governance-roadmap.md).
 
 [MIT License](LICENSE)

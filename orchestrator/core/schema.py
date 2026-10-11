@@ -1,4 +1,4 @@
-"""Schema validation and parsing engine for AI Engineering Factory."""
+"""Schema validation and parsing engine for AI Governance Control."""
 
 import hashlib
 import json

@@ -37,7 +37,7 @@ Win32 storeのenabled=Trueも本人登録の具体的承認まで有効化しな
 
 ## adapter引継ぎの対象ファイル・関数
 
-| Factory内の実在ファイル／関数 | 引継ぎ役割 |
+| AI Governance Control内の実在ファイル／関数 | 引継ぎ役割 |
 |---|---|
 | orchestrator/windows_credential_store.py / WindowsCredentialStore.write, read, delete | 承認後だけ使用する保存候補。実API未検証。 |
 | orchestrator/local_credential_broker.py / LocalCredentialBroker.enroll_trusted, execute, revoke_trusted, delete_trusted | 登録・固定操作・参照失効・削除・監査秘匿の基本候補。 |

@@ -1,4 +1,4 @@
-"""Unified Operator CLI for AI Engineering Factory."""
+"""Unified Operator CLI for AI Governance Control."""
 
 import argparse
 import os
@@ -217,7 +217,7 @@ def cmd_demo(args: argparse.Namespace) -> int:
 
 def cmd_doctor(args: argparse.Namespace) -> int:
     """Run environment, security, and integration diagnostics."""
-    print("=== Factory System Doctor ===")
+    print("=== AI Governance Control System Doctor ===")
     all_ok = True
 
     # Python version
@@ -397,7 +397,7 @@ def cmd_cancel(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="orchestrator.cli", description="AI Engineering Factory CLI"
+        prog="orchestrator.cli", description="AI Governance Control CLI"
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
