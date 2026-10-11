@@ -24,7 +24,7 @@ AI Builder/Tester/Reviewer in AGENTS are engineering phases, separate from the d
 
 **G2 — Accountable review and approval.** Human Actor/Reviewer/Owner roles; risk-based review and separation. Approval digest-binds assessment, review, candidate, inputs, command, destination and policy; expiry and revocation are rechecked before use; Python API and CLI share gates; hard denies cannot be overridden. Done when changing any bound item, or using an expired/revoked approver, blocks through both paths.
 
-**G3 — Minimal qualification references.** Record issuer, method, scope, subject, expiry/revocation. No LMS; training or AI self-report is not competence; qualifications never grant credentials automatically; do not publish unnecessary private identity. Done when a missing, expired or out-of-scope reference fails review admission and changes no credential.
+**G3 — Minimal qualification references.** Record issuer, method, scope, subject, issue time, expiry/revocation. No LMS; training or AI self-report is not competence; qualifications never grant credentials automatically; do not publish unnecessary private identity. Done when a missing, expired or out-of-scope reference fails review admission and changes no credential.
 
 **G4 — Explainable reports and pilot.** JSON and human reports connect task, reason, review, approval, execution and PR, preserving unknowns and the COLLECTED/verified/completed distinctions; a hash alone is not authenticity. Run a small pilot measuring review time, retries and restore. Done when a report reconstructs one pilot run without hidden gaps and the measurements are recorded.
 
