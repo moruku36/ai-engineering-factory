@@ -17,11 +17,11 @@ The officially available `agentapi` CLI only supports interactive
 `new-conversation` / `send-message` calls — there is no verified headless
 batch execution mode and no confirmed process/network isolation boundary
 equivalent to `OfflineContainerRunner`. Rather than treat "binary found" as
-"safe to run untrusted work", the Factory fails closed.
+"safe to run untrusted work", the AI Governance Control fails closed.
 
 A hands-on capability audit (Python `google-antigravity` SDK, the `agy` CLI, and
 the local `agentapi`/`language_server` binaries) found no official interface that
-covers autonomous `start_task`/`poll`/`cancel`/`collect`, so the Factory refuses
+covers autonomous `start_task`/`poll`/`cancel`/`collect`, so the AI Governance Control refuses
 to fabricate an unverified JSON-RPC or subprocess protocol against them. Unblocking
 this would require: (1) an officially released `google-antigravity` SDK usable
 under container network egress filtering, (2) task-scoped ephemeral auth tokens

@@ -1,6 +1,6 @@
 # Getting Started
 
-This is the one-scenario walkthrough: install the Factory once, then use it
+This is the one-scenario walkthrough: install the AI Governance Control once, then use it
 to run a task against **your own repository** end-to-end and see the
 resulting evidence. It should take about 15 minutes.
 
@@ -15,13 +15,13 @@ first. This page is only the "how".
 
 There are two separate directories in this walkthrough — don't confuse them:
 
-- **The Factory itself** — this repository, cloned once. It gives you the
+- **The AI Governance Control itself** — this repository, cloned once. It gives you the
   `ai-factory` command.
 - **Your repository** — the project you actually want to run tasks against.
   Everything from step 2 onward runs from *inside that repo*, not inside the
-  Factory's clone.
+  AI Governance Control's clone.
 
-## 1. Install the Factory
+## 1. Install the AI Governance Control
 
 ```bash
 git clone https://github.com/moruku36/ai-engineering-factory.git
@@ -41,7 +41,7 @@ copy one template file out of it in step 4.
 ## 2. Switch to your own repository
 
 Everything from here runs from inside the repository you want to govern —
-not from inside the Factory's clone:
+not from inside the AI Governance Control's clone:
 
 ```bash
 cd /path/to/YOUR_REPOSITORY
@@ -61,7 +61,7 @@ not a failure. It means **Execution Mode: MANUAL_ONLY**: every merge
 requires an explicit Human approval token, by design (see
 [Safety Model](../README.md#safety-model)).
 
-## 4. Point the Factory at your repository
+## 4. Point the AI Governance Control at your repository
 
 Still inside your own repository:
 
@@ -84,7 +84,7 @@ directory):
 
 ## 5. Write a task
 
-Copy the template out of the Factory clone into your own repository:
+Copy the template out of the AI Governance Control clone into your own repository:
 
 ```bash
 mkdir -p tasks
@@ -227,12 +227,11 @@ once when the GitHub operation actually runs.
 
 ## 9. Open the PR
 
-The Factory does not push branches or open PRs for you — that transport is
-intentionally unimplemented (`GitHubStatePublisher.publish_branch` /
-`create_or_update_pr` both raise `NotImplementedError`; see
-[Safety Model](../README.md#safety-model)). Once validation and approval
-have produced evidence you trust, push the branch and open the PR yourself
-(`git push`, `gh pr create`, or your normal review workflow).
+Once AI Governance Control validation and approval evidence are trusted, push the branch and open the PR with your normal workflow, such as `git push` and `gh pr create`.
+
+The GitHub transport is `RealGitHubStatePublisher` in `orchestrator/adapters/github.py`. It implements `publish_branch` and `create_or_update_pr`, with remote ref/SHA checks and a durable journal. The older `GitHubStatePublisher` in `orchestrator/adapters/manual.py` is still an unimplemented stub. The demo does not automate the real publisher.
+
+Automatic merge is prohibited. Verify the human merge separately. See the [safety model](../README.md#safety-model).
 
 ## What's next
 

@@ -80,4 +80,4 @@ pytest -v tests/
 - Never place credentials, approval secrets, raw session logs, runtime databases, or private environment files in Git.
 - Treat Issues, Pull Requests, task manifests, repository documents, and generated agent instructions as potentially untrusted input.
 - A public example is not an authorization boundary. Infrastructure apply/destroy, IAM changes, deployment, release, public exposure, credential operations, and merge still require explicit Human approval.
-- Do not assume server-side branch protection is configured. Verify it with `doctor` or the GitHub UI and keep Factory policy checks as a separate defense-in-depth layer.
+- Do not assume server-side branch protection is configured. Verify it with `doctor` or the GitHub UI and keep AI Governance Control policy checks as a separate defense-in-depth layer.

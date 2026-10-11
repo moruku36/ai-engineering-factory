@@ -1,7 +1,7 @@
 # Local artifact handoff v0.1
 
 This is the first bounded foundation for the approved personal AI team plan:
-an offline manifest contract and receiver byte checks. Factory remains
+an offline manifest contract and receiver byte checks. AI Governance Control remains
 Experimental / MANUAL_ONLY. No native agent adapter, network retrieval, execution
 service, model selection, cloud access, or new persistent storage is added.
 

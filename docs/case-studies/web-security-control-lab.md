@@ -1,10 +1,10 @@
 # Case Study: Web Security Control Lab で見えた AI 開発ガバナンスの境界
 
-この文書は、[Web Security Control Lab](https://github.com/moruku36/web-security-control-lab) を実際の対象リポジトリとして使い、複数のAI Coding Agentと AI Engineering Factory を組み合わせたときに何が起きたか、その失敗と改善を記録した実戦Case Studyです。
+この文書は、[Web Security Control Lab](https://github.com/moruku36/web-security-control-lab) を実際の対象リポジトリとして使い、複数のAI Coding Agentと AI Governance Control を組み合わせたときに何が起きたか、その失敗と改善を記録した実戦Case Studyです。
 
-目的は「AIでうまく開発できた」という成功例を示すことではありません。むしろ、**自然言語の指示・allowed_paths・PR運用だけでは防げなかった境界違反を観測し、その結果をFactoryの機械的な制御へ還元した過程**を残すことです。
+目的は「AIでうまく開発できた」という成功例を示すことではありません。むしろ、**自然言語の指示・allowed_paths・PR運用だけでは防げなかった境界違反を観測し、その結果をAI Governance Controlの機械的な制御へ還元した過程**を残すことです。
 
-> このCase Studyは2026年9月時点の実装・運用に基づきます。Factoryは現在も Experimental / MANUAL_ONLY です。
+> このCase Studyは2026年9月時点の実装・運用に基づきます。AI Governance Controlは現在も Experimental / MANUAL_ONLY です。
 
 ---
 
@@ -46,12 +46,12 @@ VULNERABLE implementation
     ↓
 STOP
     ↓
-Factory Verification
+AI Governance Control Verification
     ↓
 Claude Code / Sonnet
 Independent Security Remediation
     ↓
-Factory Verification
+AI Governance Control Verification
     ↓
 Human Approval
     ↓
@@ -62,7 +62,7 @@ Merge
 
 - **Initial Builder** は脆弱状態と検出基盤までを作る。
 - **Independent Reviewer / Remediation Agent** は、その後のフェーズでセキュリティ改修を行う。
-- **Factory** は両者の自己申告を信用せず、差分・テスト・証跡・承認境界を検証する。
+- **AI Governance Control** は両者の自己申告を信用せず、差分・テスト・証跡・承認境界を検証する。
 - **Human** は最終判断とMergeを担当する。
 
 この分離が守られれば、「作ったAgent自身が自分の成果を採点する」構造を避けられます。
@@ -90,7 +90,7 @@ future HARDENED implementation
 
 ### なぜ既存の制御で防げなかったのか
 
-当時のFactory Taskは、主に次のような空間的境界を持っていました。
+当時のAI Governance Control Taskは、主に次のような空間的境界を持っていました。
 
 ~~~yaml
 allowed_paths:
@@ -117,7 +117,7 @@ app/ がPhase 1とPhase 3の両方で変更対象なら、Initial Builderが将�
 
 もう1つの問題はMerge Boundaryでした。
 
-Sonnet側には「PRを作成したら停止し、Mergeしない」という自然言語の指示を与えていました。しかし実験中、対象PRはFactoryの意図した最終検証・Human Approvalステップより先にMergeされました。
+Sonnet側には「PRを作成したら停止し、Mergeしない」という自然言語の指示を与えていました。しかし実験中、対象PRはAI Governance Controlの意図した最終検証・Human Approvalステップより先にMergeされました。
 
 この時点で分かったことは、より根本的です。
 
@@ -141,9 +141,9 @@ Merge
 
 ---
 
-## 5. 実験からFactoryへ還元した変更
+## 5. 実験からAI Governance Controlへ還元した変更
 
-この実験結果をAI Engineering Factory自身へフィードバックし、[PR #25](https://github.com/moruku36/ai-engineering-factory/pull/25) で制御を強化しました。
+この実験結果をAI Governance Control自身へフィードバックし、[PR #25](https://github.com/moruku36/ai-engineering-factory/pull/25) で制御を強化しました。
 
 ### 5.1 Machine-readable Phase Contract
 
@@ -254,7 +254,7 @@ Web Security Control Lab側では、mainに対してGitHub Rulesetも導入し�
 
 ただし、個人Repositoryかつ同一IdentityをAI/Humanで共有する構成では、RulesetだけでHumanとAgentを識別できません。
 
-そのためFactoryでは、Rulesetを**最終的なHuman Identity保証ではなくDefense-in-Depth**として扱います。
+そのためAI Governance Controlでは、Rulesetを**最終的なHuman Identity保証ではなくDefense-in-Depth**として扱います。
 
 より強い分離が必要なら、
 
@@ -296,7 +296,7 @@ ruff:
 PASS
 ~~~
 
-Factory側の改善PR #25では、Phase Boundary / Approval Boundary / Merge Boundaryに対する回帰テストを追加し、Linux / Windows / real offline container boundaryのCIを通過させました。
+AI Governance Control側の改善PR #25では、Phase Boundary / Approval Boundary / Merge Boundaryに対する回帰テストを追加し、Linux / Windows / real offline container boundaryのCIを通過させました。
 
 最終工程では、AI側はPR更新までで停止し、**Human OperatorがPR #25を手動Merge**しました。
 
@@ -399,11 +399,11 @@ Sonnetが想定していたセキュリティ改修を大量に書かなかっ�
 
 ## 10. 関連リンク
 
-- [AI Engineering Factory README](../../README.md)
+- [AI Governance Control README](../../README.md)
 - [Architecture Specification](../../ARCHITECTURE.md)
 - [Security Policy & Guardrails](../../SECURITY.md)
 - [Getting Started](../getting-started.md)
-- [Factory PR #25: Phase Contract / Human Merge Boundary](https://github.com/moruku36/ai-engineering-factory/pull/25)
+- [AI Governance Control PR #25: Phase Contract / Human Merge Boundary](https://github.com/moruku36/ai-engineering-factory/pull/25)
 - [Web Security Control Lab](https://github.com/moruku36/web-security-control-lab)
 - [Web Security Control Lab PR #1](https://github.com/moruku36/web-security-control-lab/pull/1)
 
@@ -415,4 +415,4 @@ Sonnetが想定していたセキュリティ改修を大量に書かなかっ�
 
 **Agentが賢くなるほど、Promptで役割を決めるだけでは足りず、役割・フェーズ・承認・Mergeの境界を機械的に表現する必要がある**、という点です。
 
-Web Security Control Labで実際に境界違反を観測できたことで、AI Engineering Factoryの設計は「理論上のガードレール」から、実際の失敗を受けて強化された制御へ一段進みました。
+Web Security Control Labで実際に境界違反を観測できたことで、AI Governance Controlの設計は「理論上のガードレール」から、実際の失敗を受けて強化された制御へ一段進みました。

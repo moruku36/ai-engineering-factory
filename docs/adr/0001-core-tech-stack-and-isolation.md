@@ -4,7 +4,7 @@
 Accepted
 
 ## Context
-The AI Engineering Factory requires a robust, minimal, and deterministic foundation. We must avoid heavy infrastructure dependencies (Redis, Kubernetes, Vector DBs, heavy Agent frameworks) while ensuring safety, reproducibility, and rigorous isolation.
+The AI Governance Control requires a robust, minimal, and deterministic foundation. We must avoid heavy infrastructure dependencies (Redis, Kubernetes, Vector DBs, heavy Agent frameworks) while ensuring safety, reproducibility, and rigorous isolation.
 
 ## Decisions
 1. **Language & Core Runtime**: Python 3.11+, PyYAML (safe loader only), JSON Schema 2020-12 (`jsonschema`).

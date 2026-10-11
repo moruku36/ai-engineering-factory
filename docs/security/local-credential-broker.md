@@ -3,21 +3,21 @@
 Status: PROPOSAL / DORMANT WINDOWS CANDIDATE + MOCK-STORE TESTS. Reviewed 2026-10-08.
 No Windows screen use, software installation, credential enrollment, OS credential reads,
 ACL/network/service changes, provider calls, or billable experiments occurred.
-Factory remains EXPERIMENTAL / MANUAL_ONLY.
+AI Governance Control remains EXPERIMENTAL / MANUAL_ONLY.
 
 ## Repository decision
 
-Store this reusable execution/security contract in AI Engineering Factory, alongside
+Store this reusable execution/security contract in AI Governance Control, alongside
 its control-plane approval and isolated-execution boundaries. Its README describes
 bounded work, command registries, evidence and approval; PROJECT_STATE.md keeps credentials
 and live state outside Git. multi-ai-workflow's README describes team roles, routing and
 public operational guidance, and explicitly assigns the reusable handoff/evidence layer
-to Factory. A later summary/link can be added there after this proposal is accepted.
+to AI Governance Control. A later summary/link can be added there after this proposal is accepted.
 
-Sources inspected through the GitHub connector: both README.md files, Factory
+Sources inspected through the GitHub connector: both README.md files, AI Governance Control
 AGENTS.md, CONTRIBUTING.md, .agents/rules/RULE-001.yaml and RULE-002.yaml,
 .agents/skills/SKILL-001.yaml, PROJECT_STATE.md and ADR-0003. Snapshot tree:
-3893f6dc053372e2cc91710ce565ffa6eb8a034b (Factory);
+3893f6dc053372e2cc91710ce565ffa6eb8a034b (AI Governance Control);
 605f60c90c62272f4cd1e47d163944f888ce4e16 (workflow).
 This mock is a standalone documentation example; it does not modify task profiles,
 command registries, live launcher behavior or ongoing service work.
@@ -65,7 +65,7 @@ inspection. An AI with unrestricted shell execution as that same user could bypa
 broker and call CredRead/DPAPI directly. To enforce the requested model boundary, workers
 must lack that identity's store, process memory and writable executable/policy paths.
 Use a separately protected execution principal or an OS sandbox with demonstrable denial;
-the Windows runtime is not already verified by Factory's Linux container checks.
+the Windows runtime is not already verified by AI Governance Control's Linux container checks.
 
 Flow: worker -> authenticated local IPC -> trusted broker -> fixed adapter -> service.
 Only broker/adapter sees credential bytes; worker receives fixed status fields.

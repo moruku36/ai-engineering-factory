@@ -26,7 +26,7 @@ The following actions require explicit, one-time, cryptographically bound Human 
 - Declarations like `approved: true` inside untrusted YAML or PR issue comments are treated as untrusted and ignored.
 
 ### 3.1 Guarantee Scope
-The Approval Token protects **Factory-mediated operations only** (actions issued
+The Approval Token protects **AI Governance Control-mediated operations only** (actions issued
 through `orchestrator.cli approve` and consumed by the Control Plane, such as
 `merge_pull_request`). It does not, by itself, block a repository maintainer
 from merging a Pull Request directly through the GitHub UI or API — that
@@ -40,7 +40,7 @@ direct/force pushes and requires CI to pass, but does not by itself require a
 second human reviewer's sign-off on `main`.
 
 ### 3.2 Human / Worker Trust Boundary & Credential Separation
-The Factory distinguishes four operational roles:
+The AI Governance Control distinguishes four operational roles:
 1. **Worker / Coding Agent (Untrusted)**: Executes code generation, file editing within `allowed_paths`, and local test runs. Strictly prohibited from issuing or consuming approval tokens, and prohibited from performing repository merges.
 2. **Independent Verifier (Control Plane)**: Measures diffs against `base_sha`, calculates `candidate_digest`, enforces JUnit test outcomes, and verifies `phase_contract` compliance without trusting agent self-reports.
 3. **Human Operator (Authority)**: Holds an asymmetric private key registered in `ApproverRegistry`, evaluates candidate evidence, issues cryptographically signed one-time approval tokens, and performs the final merge decision.
@@ -51,7 +51,7 @@ When an AI Coding Agent and a Human Operator execute in the same environment (e.
 To achieve fail-closed defense-in-depth:
 - **Worker Credential**: If a dedicated token is used, it should be a Fine-grained Personal Access Token scoped strictly to `Contents: write` (for task branches) and `Pull requests: write` (for opening PRs), with no merge permissions.
 - **Human Operator Credential**: Full repository merge authority is reserved exclusively for the human operator (via Web UI, passkey, or separate credentials not mounted in the worker execution context).
-- **Control Plane Enforcement**: Regardless of transport tokens, the Factory's `StateLedger` and `PolicyEngine` treat automated PR merge as a `HARD_DENY` action, requiring verified human approval token consumption before any task can transition from `READY_FOR_MERGE` to `DONE`.
+- **Control Plane Enforcement**: Regardless of transport tokens, the AI Governance Control's `StateLedger` and `PolicyEngine` treat automated PR merge as a `HARD_DENY` action, requiring verified human approval token consumption before any task can transition from `READY_FOR_MERGE` to `DONE`.
 
 ## 4. Worker Boundary & Sandboxing
 - Workers are NEVER granted GitHub write tokens, cloud production credentials, host user home directory access, SSH agents, Docker daemon sockets, or cloud instance metadata endpoints.

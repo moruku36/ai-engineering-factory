@@ -1,12 +1,12 @@
 # Architecture Overview
 
-> **AI Engineering Factory: システムビジョンとコンポーネント構成**  
+> **AI Governance Control: システムビジョンとコンポーネント構成**
 > ※ 本システムの詳細な仕様・厳格な境界・状態遷移の正本はリポジトリ直下の [ARCHITECTURE.md](../../ARCHITECTURE.md) です。本ドキュメントはコンポーネント概要のサマリーです。
 
 
 ---
 
-AI Engineering Factory は、「AI エージェントを専門労働力として組織化し、厳格なソフトウェア工学的コントロールの下で自律開発を行わせる」ためのファクトリー型プラットフォームです。エージェントが任意にコードを main に反映することはできず、必ず独立した隔離環境、自動検証パイプライン、真正証跡生成、そして人間の承認を経て安全に統合されます。
+AI Governance Control は、「AI エージェントを専門労働力として組織化し、厳格なソフトウェア工学的コントロールの下で自律開発を行わせる」ためのファクトリー型プラットフォームです。エージェントが任意にコードを main に反映することはできず、必ず独立した隔離環境、自動検証パイプライン、真正証跡生成、そして人間の承認を経て安全に統合されます。
 
 コンポーネント構成図とレイヤー別のサブシステム対応表は [ARCHITECTURE.md §1](../../ARCHITECTURE.md#1-システムアーキテクチャ全体像) を参照してください。ここでは正本にはない、ガバナンスの狙いを一枚で示すマインドマップだけを掲載します。
 
@@ -16,7 +16,7 @@ AI Engineering Factory は、「AI エージェントを専門労働力として
 
 ```mermaid
 mindmap
-  root((AI Engineering Factory<br>Governance))
+  root((AI Governance Control<br>Governance))
     単一状態書き込み<br>Single Writer
       SQLiteトランザクション
       CASリビジョン検証

@@ -21,10 +21,10 @@
 - `issued_at` / `expires_at`: 有限UNIX秒。開始可能期間は最大300秒。
 - `session_seconds`: 6000。起動受付の有効期間とは別の試験・後処理期限。
 - `config_sha256`: 明示指定した非秘密operator設定のSHA256。
-- `pins`: Factoryの関連4ファイル、Qwen起動3ファイル、明示指定operationsの
+- `pins`: AI Governance Controlの関連4ファイル、Qwen起動3ファイル、明示指定operationsの
   `qmc_runpod` 全Pythonソース、実行PythonのSHA256。追加ファイルも照合対象。
 - `factory_root`, `qwen_root`, `operations_root`, `python_exe`: 対象の絶対パス。
-- `claims_dir`: Factory作業場所の親にある既存 `runpod-startup-claims` の絶対パス。
+- `claims_dir`: AI Governance Control作業場所の親にある既存 `runpod-startup-claims` の絶対パス。
 
 `public_pins(factory, qwen, operations)` は明示指定した公開ソースのみを読む。
 承認を作る操作は提供しない。自動承認や他の資格情報候補への切替はない。
