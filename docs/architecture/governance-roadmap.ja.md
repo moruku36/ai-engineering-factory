@@ -45,7 +45,7 @@ AGENTSのAI Builder/Tester/Reviewerは工程上の役割で、草案の人間Act
 
 ### 出典と確認範囲
 
-佐々木拓郎氏（NRIネットコム）、[生成AI時代の クレデンシャルとパーミッション設計](https://speakerdeck.com/nrinetcom/seisei-ai-jidai-no-to-pa-misshon-sekkei)。副題は「AIに権限と鍵を、どう渡し、あるいは渡さないのか」、Developers Summit 2026 KANSAI / A-6。表紙日付は **2026-08-21**、Speaker Deck 公開日は **2026-09-02**。末尾のロゴを含む全34スライドの本文と図を確認しました。以下は **ビューアのページ番号（1始まり）** で、印刷されたフッター番号は一つ小さくなります（0-33）。例: ビューア25頁は印刷24頁です。
+佐々木拓郎氏（NRIネットコム）、[生成AI時代の クレデンシャルとパーミッション設計](https://speakerdeck.com/nrinetcom/seisei-ai-jidai-no-to-pa-misshon-sekkei)。副題は「AIに権限と鍵を、どう渡し、あるいは渡さないのか」、Developers Summit 2026 KANSAI / A-6。表紙日付は **2026-08-21**、Speaker Deck 公開日は **2026-09-02**。末尾のロゴを含む全34スライドの本文と図を確認しました。以下は **ビューアのページ番号（1始まり）** で、フッターに印刷された番号があるページでは一つ小さくなります。例: ビューア25頁は印刷24頁です。末尾のロゴには印刷番号がありません。
 
 資料は許可する操作、到達範囲、認証情報の渡し方を分けています（[4頁](https://speakerdeck.com/nrinetcom/seisei-ai-jidai-no-to-pa-misshon-sekkei?slide=4)）。文章の指示と設定・実行時 hooks（[12-13頁](https://speakerdeck.com/nrinetcom/seisei-ai-jidai-no-to-pa-misshon-sekkei?slide=12)）、許可リストと隔離を区別し、データ分類で配置を決める考え方を示しています（[15-17頁](https://speakerdeck.com/nrinetcom/seisei-ai-jidai-no-to-pa-misshon-sekkei?slide=15)）。秘密ストアの図では保管と取得権限を区別します（[20頁](https://speakerdeck.com/nrinetcom/seisei-ai-jidai-no-to-pa-misshon-sekkei?slide=20)）。ストアから注入した後は AI プロセスから値を参照できる（[24頁](https://speakerdeck.com/nrinetcom/seisei-ai-jidai-no-to-pa-misshon-sekkei?slide=24)）一方、操作代理では外部の実行主体が値を保持します（[25頁](https://speakerdeck.com/nrinetcom/seisei-ai-jidai-no-to-pa-misshon-sekkei?slide=25)）。鍵の寿命・外部での更新と人のログインは別に扱われています（[27-28頁](https://speakerdeck.com/nrinetcom/seisei-ai-jidai-no-to-pa-misshon-sekkei?slide=27)）。
 
