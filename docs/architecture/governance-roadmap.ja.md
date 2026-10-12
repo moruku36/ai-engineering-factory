@@ -71,38 +71,6 @@ main [`7bb92a1434dcdb067d0c1f919fa76b4ab518fe47`](https://github.com/moruku36/ai
 
 この補足ではコード、本番設定、鍵、権限、公開識別子、互換 URL を変更しません。期限、自動マージ、本番保証、発表者の推奨という主張を追加しません。
 
-## 補足: 権限・実行境界・認証情報の改修候補
-
-**このプロジェクトに使えるか:** 使えます。範囲を限定して自律実行を任せるための設計資料として、まず G1 の評価と G2 の受入判断に三つの観点を追加し、G4 で検証してから G5 の操作代理 adapter を検討します。これは公開プロジェクトの改修提案であり、新規の会社案件、リリースの約束、実装済み統制ではありません。既存の説明責任と TDD の計画は維持し、G3 は変更しません。
-
-### 出典と確認範囲
-
-佐々木拓郎氏（NRIネットコム）、[生成AI時代の クレデンシャルとパーミッション設計](https://speakerdeck.com/nrinetcom/seisei-ai-jidai-no-to-pa-misshon-sekkei)。副題は「AIに権限と鍵を、どう渡し、あるいは渡さないのか」、Developers Summit 2026 KANSAI / A-6。表紙日付は **2026-08-21**、Speaker Deck 公開日は **2026-09-02**。末尾のロゴを含む全34スライドの本文と図を確認しました。以下は **ビューアのページ番号（1始まり）** で、印刷されたフッター番号は一つ小さくなります（0-33）。例: ビューア25頁は印刷24頁です。
-
-資料は許可する操作、到達範囲、認証情報の渡し方を分けています（[4頁](https://speakerdeck.com/nrinetcom/seisei-ai-jidai-no-to-pa-misshon-sekkei?slide=4)）。文章の指示と設定・実行時 hooks（[12-13頁](https://speakerdeck.com/nrinetcom/seisei-ai-jidai-no-to-pa-misshon-sekkei?slide=12)）、許可リストと隔離を区別し、データ分類で配置を決める考え方を示しています（[15-17頁](https://speakerdeck.com/nrinetcom/seisei-ai-jidai-no-to-pa-misshon-sekkei?slide=15)）。秘密ストアの図では保管と取得権限を区別します（[20頁](https://speakerdeck.com/nrinetcom/seisei-ai-jidai-no-to-pa-misshon-sekkei?slide=20)）。ストアから注入した後は AI プロセスから値を参照できる（[24頁](https://speakerdeck.com/nrinetcom/seisei-ai-jidai-no-to-pa-misshon-sekkei?slide=24)）一方、操作代理では外部の実行主体が値を保持します（[25頁](https://speakerdeck.com/nrinetcom/seisei-ai-jidai-no-to-pa-misshon-sekkei?slide=25)）。鍵の寿命・外部での更新と人のログインは別に扱われています（[27-28頁](https://speakerdeck.com/nrinetcom/seisei-ai-jidai-no-to-pa-misshon-sekkei?slide=27)）。
-
-これはカンファレンスの設計資料であり、安全性の認証、ベンチマーク、完全な認可プロトコルではありません。Claude Code の例を普遍的な構文や保証とは扱わず、設定をそのまま移植しません。コンテナにも mount、実行主体、通信、ホスト保護の検証が必要で、あらゆる脱出を防ぐ証明ではありません。鍵の四段階は露出の分析に使い、全環境で無条件に安全性を順位付けするものとは扱いません。短命鍵と更新の provider 対応は別途確認が必要です。以下の受入条件は **当プロジェクトによる翻案** であり、発表者の主張ではありません。
-
-### 既存との重複と残る課題
-
-main [`7bb92a1434dcdb067d0c1f919fa76b4ab518fe47`](https://github.com/moruku36/ai-engineering-factory/tree/7bb92a1434dcdb067d0c1f919fa76b4ab518fe47) と照合しました。AGENTS、CONTRIBUTING、`.agents/rules/RULE-001.yaml`、`RULE-002.yaml`、`.agents/skills/SKILL-001.yaml` を確認しました。役割・ルール・スキルの宣言だけでは実行時の強制を証明できません。
-
-| 観点 | 既存との重複（実装の根拠） | 未実装・限界 |
-|---|---|---|
-| 権限と承認 | [PolicyEngine](../../orchestrator/core/policy.py) の hard deny・承認必須操作、[HookEngine](../../orchestrator/core/hooks.py) の trusted hooks。[ApprovalManager](../../orchestrator/core/approval.py) の実行文脈に結び付く単回 HMAC トークン、[ApproverRegistry](../../orchestrator/core/auth.py) の ID・操作権限確認。 | hooks があるだけでは全実行入口で必須ゲートを通る証明になりません。操作ラベルは同一ユーザーの任意コードに対する OS 制限ではありません。operator 鍵・registry の保護された配備、G2 の候補・評価との追加結合は未解決です。対話の確認はこのプロジェクトの暗号的承認とは別です。 |
-| 実行境界 | [OfflineContainerRunner](../../orchestrator/core/container.py) は immutable Linux image、登録済み argv、通信遮断、非 root・読み取り専用実行、ホスト鍵の非 mount、trusted cleanup を実装。[ApprovedContainerAdapter](../../orchestrator/adapters/container.py) は登録 plan と入力 hash を結合。[運用上の限界](../operations/APPROVED_CONTAINER_LOOP.md)も参照。 | データ分類から runtime の受入可否を決める統一契約はなく、完全差分の限界も残ります。Linux CI は Windows 隔離や実モデル通信を証明しません。snapshot の無害化は trusted 前提で、任意の入力 bytes に秘密がないという保証ではありません。 |
-| 鍵の取得と代理実行 | [既存 broker 提案](../security/local-credential-broker.md) に固定操作、別 ID、結果の秘匿、モデル所有プロセスの env/argv に渡さない設計があります。[LocalCredentialBroker](../../orchestrator/local_credential_broker.py) は合成値の同一プロセス grant、期限、再利用拒否、秘匿イベントを実装。Windows store と RunPod account adapter は休眠・既定 off。 | 既存提案を重複して作りません。`trusted_task` は harness が渡す文脈で認証 IPC ではなく、同一ユーザーコードは迂回できます。配備済み worker/broker 隔離の実証はありません。休眠 provider read は汎用の承認済み live adapter ではなく、今回実鍵は登録しません。 |
-| 監査と寿命 | SQLite の承認・状態 journal、範囲限定 mock grant、cleanup 記録が基盤です。 | broker イベントは意図的に汎用 event/status のみです。境界判断を結合した報告や provider refresh の実証はありません。トークン・grant の期限と provider 鍵の寿命は別で、保存した静的鍵が短命になるわけではありません。 |
-
-### 既存段階への改修候補（未実装）
-
-- **G1 - 三つの観点を評価に追加。** 提案中の版付き評価に、許可 operation ID、データ分類（`public/internal/confidential/unknown`）、実行主体・profile、snapshot/mount と通信範囲、鍵の渡し方（`none/direct/injected/proxied`）と取得主体を追加します。値や capability handle を残さず、安全な参照で承認範囲と理由を記録します。公開データも無制限の実行を許可せず、不明な分類は評価されるまで提案する live 受入を止めます。出典: ビューア4、15-17、20-25頁。**受入条件:** 観点の欠落、未承認の runtime/mount/通信変更、別入力経路から秘密に到達できる場合は拒否します。合成値で env、子プロセス、store read API、file/mount、出力経路を検証します。G1 の完全差分基盤を再利用し、この追記で解決したとは扱いません。
-- **G2 - 実行前の強制と承認範囲。** 上記評価を既存の承認 digest 提案と CLI/API 共通ゲートへ結合します。trusted な実行前チェックで実際の runtime 設定と操作範囲を検証し、指示文や worker が渡す `approved` を権限としません。hard deny、単回使用、人の承認を維持します。低影響操作のどれを登録済み限定 policy で任せられるか定義しますが、今回権限は広げません。出典: ビューア12-13、26、30頁。**受入条件:** 必須チェックの迂回・欠落・失敗、caller の偽装、操作・宛先・profile の変更、古い/失効した承認を両経路で拒否します。hooks は決定的なレビュー済み統制コードとし、LLM の安全判断を hard gate にしません。
-- **G4 - 境界の証拠を試行。** 評価版、有効 policy/runtime digest、operation ID、許可/拒否の理由、承認参照、結果、cleanup 状態を安全に関連付けて報告します。合成 prompt injection 入力で範囲拡大や合成鍵マーカーの log・error・response 露出を検証し、拒否、確認時間、不明結果を測ります。COLLECTED/verified/completed の区別を維持します。出典: ビューア9、13、20、30-32頁。**受入条件:** 秘密・handle・私的 ID を出さずに試行1件を再構成でき、store read/外部送信の試みが拒否され、worker 出力に合成マーカーが現れないこと。限定シナリオの結果であり、一般的な prompt injection 耐性の保証ではありません。
-- **G5 - 隔離された一操作の代理と寿命契約。** 前段ゲート通過後に既存 broker 提案を具体化します。固定一操作、保護された transport による caller 認証、別の保護された executor ID、許可リストの endpoint/method/型付き入出力、最小 provider 権限とし、汎用 secret-get/shell/URL tool を公開しません。worker が store、broker memory、継承された鍵の環境変数、保護設定を読めないことを求めます。出典: ビューア20、24-28頁。provider 鍵、操作 grant、人のログインは別の寿命です。更新は worker 外で provider 対応時のみ行い、task 承認・期限・予算を延長しません。ログイン喪失、失効、範囲変化、期限切れで新たな副作用を止め、不明結果は retry 前に照合します。**受入条件:** 実境界のリハーサルで store/process 直アクセス拒否、出力秘匿、失効 grant・ログイン喪失時の拒否、更新による範囲拡大や不明操作の無断再実行がないことを実証します。静的鍵のみの provider は限界を明記し、動的鍵を模擬して保証しません。登録・配備・provider 呼出は後続の具体計画と認可が必要で、Windows/RunPod は既定 off のままです。
-
-この補足ではコード、本番設定、鍵、権限、公開識別子、互換 URL を変更しません。期限、自動マージ、本番保証、発表者の推奨という主張を追加しません。
-
 ## 前提条件
 
 実サービスを扱う段階の前に、責任者、試行、データ、能力の発行者、最初のadapterを別途決定します。現時点で機能は追加しません。
