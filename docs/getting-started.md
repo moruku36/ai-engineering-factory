@@ -24,8 +24,8 @@ There are two separate directories in this walkthrough — don't confuse them:
 ## 1. Install the AI Governance Control
 
 ```bash
-git clone https://github.com/moruku36/ai-engineering-factory.git
-cd ai-engineering-factory
+git clone https://github.com/moruku36/ai-governance-control.git
+cd ai-governance-control
 
 python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
@@ -88,7 +88,7 @@ Copy the template out of the AI Governance Control clone into your own repositor
 
 ```bash
 mkdir -p tasks
-cp /path/to/ai-engineering-factory/tasks/templates/basic-task.yaml tasks/task-001.yaml
+cp /path/to/ai-governance-control/tasks/templates/basic-task.yaml tasks/task-001.yaml
 ```
 
 Edit `tasks/task-001.yaml` (now inside *your* repo):

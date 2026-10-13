@@ -8,7 +8,7 @@
 
 人間または外部エージェントによる編集を扱う、タスク・検証・承認の基盤です。コードを自律的に書くことはしません。流れは タスク/編集 -> チェック -> PR -> 人間の承認 です。自動マージ・自動デプロイはありません。
 
-表示名を変更しました（旧称 AI Engineering Factory）。リポジトリ名、パッケージ、CLI は変更ありません。
+表示名を変更しました（旧称 AI Engineering Factory）。リポジトリ名は `moruku36/ai-governance-control` に移行しました。パッケージとCLIは変更ありません。[URL移行計画](docs/operations/repository-url-migration.md)を参照してください。
 
 ## 2. 構造
 
@@ -33,8 +33,8 @@
 Python 3.11 以上の仮想環境を用意し、クイックスタートに従って有効化してください。
 
 ```bash
-git clone https://github.com/moruku36/ai-engineering-factory.git
-cd ai-engineering-factory
+git clone https://github.com/moruku36/ai-governance-control.git
+cd ai-governance-control
 pip install -e ".[dev]"
 python -m orchestrator.cli doctor
 python -m orchestrator.cli demo --task-file tasks/templates/basic-task.yaml --worktree .

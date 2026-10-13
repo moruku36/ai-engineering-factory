@@ -8,7 +8,7 @@
 
 A task, verification, and approval framework for edits made by a person or an external agent. It does not write code autonomously. Flow: task/edit -> checks -> PR -> human approval. Nothing is merged or deployed automatically.
 
-The display name changed (formerly AI Engineering Factory); the repository slug, package, and CLI are unchanged.
+The display name changed (formerly AI Engineering Factory). The repository is now `moruku36/ai-governance-control`; the package and CLI are unchanged. See the [URL migration plan](docs/operations/repository-url-migration.md).
 
 ## 2. Structure
 
@@ -33,8 +33,8 @@ High-impact changes need human approval. The product fails closed: if a required
 Use a Python 3.11+ virtualenv and activate it as described in the quickstart.
 
 ```bash
-git clone https://github.com/moruku36/ai-engineering-factory.git
-cd ai-engineering-factory
+git clone https://github.com/moruku36/ai-governance-control.git
+cd ai-governance-control
 pip install -e ".[dev]"
 python -m orchestrator.cli doctor
 python -m orchestrator.cli demo --task-file tasks/templates/basic-task.yaml --worktree .

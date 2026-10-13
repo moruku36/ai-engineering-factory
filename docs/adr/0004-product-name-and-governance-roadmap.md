@@ -12,8 +12,8 @@ A discussion draft, [AI Execution Accountability Framework — Discussion Draft]
 ## Decision
 
 1. The display name is **AI Governance Control** (formerly AI Engineering Factory). The name describes a governance control plane, not an LLM gateway.
-2. The change is display-only. These identifiers stay unchanged for compatibility:
-   - repository slug `moruku36/ai-engineering-factory` and distribution name `ai-engineering-factory`
+2. The initial 2026-10-11 change was display-only. The owner separately authorized the 2026-10-13 repository rename to `moruku36/ai-governance-control`; see the [URL migration plan](../operations/repository-url-migration.md). These other identifiers stay unchanged for compatibility:
+   - distribution name `ai-engineering-factory`
    - import package `orchestrator` and CLI `ai-factory`
    - `AI_FACTORY_*` environment variables
    - `.ai-factory` and `.ai-engineering-factory` paths

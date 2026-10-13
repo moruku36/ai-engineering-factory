@@ -69,7 +69,7 @@ def test_real_github_publisher_verifies_remote_sha(tmp_path):
         res = MagicMock()
         res.returncode = 0
         if "get-url" in args:
-            res.stdout = "https://github.com/moruku36/ai-engineering-factory.git\n"
+            res.stdout = "https://github.com/moruku36/ai-governance-control.git\n"
         elif "rev-parse" in args:
             res.stdout = "a" * 40 + "\n"
         elif "push" in args:
@@ -86,7 +86,7 @@ def test_real_github_publisher_pr_idempotency():
     publisher = RealGitHubStatePublisher()
 
     # Mock gh pr list returning an existing PR
-    existing_pr_json = '[{"number": 42, "url": "https://github.com/moruku36/ai-engineering-factory/pull/42", "headRefOid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "state": "OPEN"}]'
+    existing_pr_json = '[{"number": 42, "url": "https://github.com/moruku36/ai-governance-control/pull/42", "headRefOid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "state": "OPEN"}]'
 
     def mock_gh(args, **kwargs):
         res = MagicMock()

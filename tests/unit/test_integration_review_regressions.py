@@ -86,8 +86,12 @@ def test_branch_ref_cannot_bypass_main_policy(tmp_path, branch):
         run.assert_not_called()
 
 
-def test_wrong_push_destination_stops_before_push(tmp_path):
-    with patch("subprocess.run", return_value=completed("https://github.com/other/repo.git")) as run:
+@pytest.mark.parametrize("destination", [
+    "https://github.com/other/repo.git",
+    "https://github.com/moruku36/ai-engineering-factory.git",
+])
+def test_wrong_push_destination_stops_before_push(tmp_path, destination):
+    with patch("subprocess.run", return_value=completed(destination)) as run:
         with pytest.raises(GitHubPublishError, match="destination"):
             RealGitHubStatePublisher().publish_branch(tmp_path, "task/test")
         assert run.call_count == 1
@@ -102,7 +106,7 @@ def test_uncertain_pr_lookup_does_not_create(response):
 
 
 def test_closed_pr_is_not_reported_as_new_success():
-    pr = {"number": 42, "url": "https://github.com/moruku36/ai-engineering-factory/pull/42",
+    pr = {"number": 42, "url": "https://github.com/moruku36/ai-governance-control/pull/42",
           "headRefOid": "a" * 40, "state": "MERGED"}
     with patch("subprocess.run", return_value=completed(json.dumps([pr]))) as run:
         with pytest.raises(GitHubPRError, match="no longer open"):

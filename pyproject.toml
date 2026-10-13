@@ -25,9 +25,9 @@ dev = [
 ]
 
 [project.urls]
-Repository = "https://github.com/moruku36/ai-engineering-factory"
-Documentation = "https://github.com/moruku36/ai-engineering-factory#readme"
-Issues = "https://github.com/moruku36/ai-engineering-factory/issues"
+Repository = "https://github.com/moruku36/ai-governance-control"
+Documentation = "https://github.com/moruku36/ai-governance-control#readme"
+Issues = "https://github.com/moruku36/ai-governance-control/issues"
 
 [tool.setuptools.packages.find]
 include = ["orchestrator*"]

@@ -1,6 +1,6 @@
 # ガバナンス・ロードマップ
 
-*提案のみです。期限はなく、自動リリースもありません。G0（文書と表示名）は完了し、[PR #37](https://github.com/moruku36/ai-engineering-factory/pull/37) でマージ済みです。G1〜G5 は未実装です。今回の変更は計画の文書化のみで、以下のTDD追加は提案です。*
+*提案のみです。期限はなく、自動リリースもありません。G0（文書と表示名）は完了し、[PR #37](https://github.com/moruku36/ai-governance-control/pull/37) でマージ済みです。G1〜G5 は未実装です。今回の変更は計画の文書化のみで、以下のTDD追加は提案です。*
 
 ## 出典と位置づけ
 
@@ -10,7 +10,7 @@
 
 ## 現状（main `8ef30734d041c7fa817c7dc5d4209fa2d31c8a8d`）
 
-基準: main の完全なピン留めSHA [`8ef30734d041c7fa817c7dc5d4209fa2d31c8a8d`](https://github.com/moruku36/ai-engineering-factory/tree/8ef30734d041c7fa817c7dc5d4209fa2d31c8a8d)。以前の基準（`2525cbb`）からの変更はG0の表示と文書のみで、以下の実装に関する記述は再確認のうえ変更ありません。現在のプロジェクト状況は [PROJECT_STATE.md](../../PROJECT_STATE.md)、承認付きコンテナadapterとその制限は [APPROVED_CONTAINER_LOOP.md](../operations/APPROVED_CONTAINER_LOOP.md) を参照してください。
+基準: main の完全なピン留めSHA [`8ef30734d041c7fa817c7dc5d4209fa2d31c8a8d`](https://github.com/moruku36/ai-governance-control/tree/8ef30734d041c7fa817c7dc5d4209fa2d31c8a8d)。以前の基準（`2525cbb`）からの変更はG0の表示と文書のみで、以下の実装に関する記述は再確認のうえ変更ありません。現在のプロジェクト状況は [PROJECT_STATE.md](../../PROJECT_STATE.md)、承認付きコンテナadapterとその制限は [APPROVED_CONTAINER_LOOP.md](../operations/APPROVED_CONTAINER_LOOP.md) を参照してください。
 
 実装済み: タスクJSON Schema、DAG、単一のリスク列挙（`low/medium/high/critical`）、コマンド/パスポリシー、オフラインLinuxコンテナ、回収とIndependentVerifier（完全差分の制限は残る）、単回使用HMACトークンを扱うApprovalManager、ID/操作権限を扱うApproverRegistry、認証付きCLI approve（`cmd_approve`）、SQLite台帳/ジャーナル、GitHubチェック、COLLECTEDのみの受領、初期状態で無効なWindows/RunPodコード。HMACトークンの完全性・単回使用と、ApproverRegistryによるID・操作権限は別の仕組みです。実運用では保護されたレジストリと鍵の配備が引き続き必要です。状態は Experimental/MANUAL_ONLY で、根拠は模擬/CIであり、実キー、GPU、Windows Hello、Mattermostの証明ではありません。
 
@@ -53,7 +53,7 @@ AGENTSのAI Builder/Tester/Reviewerは工程上の役割で、草案の人間Act
 
 ### 既存との重複と残る課題
 
-main [`7bb92a1434dcdb067d0c1f919fa76b4ab518fe47`](https://github.com/moruku36/ai-engineering-factory/tree/7bb92a1434dcdb067d0c1f919fa76b4ab518fe47) と照合しました。AGENTS、CONTRIBUTING、`.agents/rules/RULE-001.yaml`、`RULE-002.yaml`、`.agents/skills/SKILL-001.yaml` を確認しました。役割・ルール・スキルの宣言だけでは実行時の強制を証明できません。
+main [`7bb92a1434dcdb067d0c1f919fa76b4ab518fe47`](https://github.com/moruku36/ai-governance-control/tree/7bb92a1434dcdb067d0c1f919fa76b4ab518fe47) と照合しました。AGENTS、CONTRIBUTING、`.agents/rules/RULE-001.yaml`、`RULE-002.yaml`、`.agents/skills/SKILL-001.yaml` を確認しました。役割・ルール・スキルの宣言だけでは実行時の強制を証明できません。
 
 | 観点 | 既存との重複（実装の根拠） | 未実装・限界 |
 |---|---|---|
