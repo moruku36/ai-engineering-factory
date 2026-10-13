@@ -92,10 +92,10 @@ Stops cover scope violations, unknowns, repeats, no-ops and budget exhaustion. S
 
 ## Relation to current code
 
-At pinned main [`8ef30734`](https://github.com/moruku36/ai-engineering-factory/tree/8ef30734d041c7fa817c7dc5d4209fa2d31c8a8d), G0 is merged (PR #37), G1-G5 are unimplemented, and status is Experimental/MANUAL_ONLY. Current state: [PROJECT_STATE.md](../../PROJECT_STATE.md).
+At pinned main [`8ef30734`](https://github.com/moruku36/ai-governance-control/tree/8ef30734d041c7fa817c7dc5d4209fa2d31c8a8d), G0 is merged (PR #37), G1-G5 are unimplemented, and status is Experimental/MANUAL_ONLY. Current state: [PROJECT_STATE.md](../../PROJECT_STATE.md).
 
 - The [task schema](../../schemas/task.schema.json) phase enum (1-4) and phase contract are not TDD cycles or semantic verification. `retry.max_attempts` (maximum 3) exists but is not a proven durable TDD repair budget.
-- [IndependentVerifier](../../orchestrator/core/verifier.py) candidate and JUnit checks do not prove a complete diff or TDD chronology. Diff handling centers on additions and changes; deletion, mode, rename and unknown base remain G1 work. Handoff rejects tasks that need a complete diff, and the adapter does not redispatch automatically. See [APPROVED_CONTAINER_LOOP.md](../operations/APPROVED_CONTAINER_LOOP.md). Pinned sources: [schema](https://github.com/moruku36/ai-engineering-factory/blob/8ef30734d041c7fa817c7dc5d4209fa2d31c8a8d/schemas/task.schema.json), [verifier](https://github.com/moruku36/ai-engineering-factory/blob/8ef30734d041c7fa817c7dc5d4209fa2d31c8a8d/orchestrator/core/verifier.py).
+- [IndependentVerifier](../../orchestrator/core/verifier.py) candidate and JUnit checks do not prove a complete diff or TDD chronology. Diff handling centers on additions and changes; deletion, mode, rename and unknown base remain G1 work. Handoff rejects tasks that need a complete diff, and the adapter does not redispatch automatically. See [APPROVED_CONTAINER_LOOP.md](../operations/APPROVED_CONTAINER_LOOP.md). Pinned sources: [schema](https://github.com/moruku36/ai-governance-control/blob/8ef30734d041c7fa817c7dc5d4209fa2d31c8a8d/schemas/task.schema.json), [verifier](https://github.com/moruku36/ai-governance-control/blob/8ef30734d041c7fa817c7dc5d4209fa2d31c8a8d/orchestrator/core/verifier.py).
 
 All current security boundaries, default-off and live-use limits, and public identifiers stay unchanged.
 

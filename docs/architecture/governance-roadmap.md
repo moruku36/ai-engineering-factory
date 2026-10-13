@@ -1,6 +1,6 @@
 # Governance roadmap
 
-*Proposal only. No deadlines and no automatic release. G0 (documentation and display name) is complete and merged in [PR #37](https://github.com/moruku36/ai-engineering-factory/pull/37). G1-G5 are not implemented. The current change is planning text only, and the TDD additions below are proposals.*
+*Proposal only. No deadlines and no automatic release. G0 (documentation and display name) is complete and merged in [PR #37](https://github.com/moruku36/ai-governance-control/pull/37). G1-G5 are not implemented. The current change is planning text only, and the TDD additions below are proposals.*
 
 ## Source and status
 
@@ -10,7 +10,7 @@ Ideas used: start from the action, then risk, needed knowledge and accountable p
 
 ## Current state (main `8ef30734d041c7fa817c7dc5d4209fa2d31c8a8d`)
 
-Base: full pinned main SHA [`8ef30734d041c7fa817c7dc5d4209fa2d31c8a8d`](https://github.com/moruku36/ai-engineering-factory/tree/8ef30734d041c7fa817c7dc5d4209fa2d31c8a8d). Since the earlier baseline (`2525cbb`) only G0 display and documentation changed; the implementation statements below were rechecked and are unchanged. For current project status see [PROJECT_STATE.md](../../PROJECT_STATE.md). For the approved-container adapter and its limits see [APPROVED_CONTAINER_LOOP.md](../operations/APPROVED_CONTAINER_LOOP.md).
+Base: full pinned main SHA [`8ef30734d041c7fa817c7dc5d4209fa2d31c8a8d`](https://github.com/moruku36/ai-governance-control/tree/8ef30734d041c7fa817c7dc5d4209fa2d31c8a8d). Since the earlier baseline (`2525cbb`) only G0 display and documentation changed; the implementation statements below were rechecked and are unchanged. For current project status see [PROJECT_STATE.md](../../PROJECT_STATE.md). For the approved-container adapter and its limits see [APPROVED_CONTAINER_LOOP.md](../operations/APPROVED_CONTAINER_LOOP.md).
 
 Implemented: task JSON Schema, DAG, one risk enum (`low/medium/high/critical`), command/path policy, offline Linux containers, collection and IndependentVerifier (complete-diff limits remain), ApprovalManager with single-use HMAC tokens, ApproverRegistry identity/action permissions, authenticated CLI approve (`cmd_approve`), SQLite ledger/journal, GitHub checks, COLLECTED-only receipts, and default-off Windows/RunPod code. HMAC token integrity/single-use and ApproverRegistry identity/action permission are distinct mechanisms. Protected registry and key provisioning in a real deployment is still required. Status is Experimental/MANUAL_ONLY; evidence is synthetic/CI, not live keys, GPU, Windows Hello, or Mattermost.
 
@@ -53,7 +53,7 @@ This is a conference design talk, not a security certification, benchmark or com
 
 ### Existing overlap and remaining work
 
-Rechecked against main [`7bb92a1434dcdb067d0c1f919fa76b4ab518fe47`](https://github.com/moruku36/ai-engineering-factory/tree/7bb92a1434dcdb067d0c1f919fa76b4ab518fe47). Read AGENTS, CONTRIBUTING, `.agents/rules/RULE-001.yaml`, `RULE-002.yaml` and `.agents/skills/SKILL-001.yaml`; these role/rule/skill declarations do not establish runtime enforcement by themselves.
+Rechecked against main [`7bb92a1434dcdb067d0c1f919fa76b4ab518fe47`](https://github.com/moruku36/ai-governance-control/tree/7bb92a1434dcdb067d0c1f919fa76b4ab518fe47). Read AGENTS, CONTRIBUTING, `.agents/rules/RULE-001.yaml`, `RULE-002.yaml` and `.agents/skills/SKILL-001.yaml`; these role/rule/skill declarations do not establish runtime enforcement by themselves.
 
 | Dimension | Existing overlap (with implementation evidence) | Gap / limit |
 |---|---|---|

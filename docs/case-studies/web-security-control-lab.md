@@ -143,7 +143,7 @@ Merge
 
 ## 5. 実験からAI Governance Controlへ還元した変更
 
-この実験結果をAI Governance Control自身へフィードバックし、[PR #25](https://github.com/moruku36/ai-engineering-factory/pull/25) で制御を強化しました。
+この実験結果をAI Governance Control自身へフィードバックし、[PR #25](https://github.com/moruku36/ai-governance-control/pull/25) で制御を強化しました。
 
 ### 5.1 Machine-readable Phase Contract
 
@@ -403,7 +403,7 @@ Sonnetが想定していたセキュリティ改修を大量に書かなかっ�
 - [Architecture Specification](../../ARCHITECTURE.md)
 - [Security Policy & Guardrails](../../SECURITY.md)
 - [Getting Started](../getting-started.md)
-- [AI Governance Control PR #25: Phase Contract / Human Merge Boundary](https://github.com/moruku36/ai-engineering-factory/pull/25)
+- [AI Governance Control PR #25: Phase Contract / Human Merge Boundary](https://github.com/moruku36/ai-governance-control/pull/25)
 - [Web Security Control Lab](https://github.com/moruku36/web-security-control-lab)
 - [Web Security Control Lab PR #1](https://github.com/moruku36/web-security-control-lab/pull/1)
 

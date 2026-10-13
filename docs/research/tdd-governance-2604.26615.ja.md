@@ -92,10 +92,10 @@ G0は完了しています。G1〜G5は将来のみを対象とする提案で�
 
 ## 現行コードとの関係
 
-ピン留めしたmain [`8ef30734`](https://github.com/moruku36/ai-engineering-factory/tree/8ef30734d041c7fa817c7dc5d4209fa2d31c8a8d) では、G0はマージ済み（PR #37）、G1〜G5は未実装で、状態はExperimental/MANUAL_ONLYです。現在の状況は [PROJECT_STATE.md](../../PROJECT_STATE.md) を参照してください。
+ピン留めしたmain [`8ef30734`](https://github.com/moruku36/ai-governance-control/tree/8ef30734d041c7fa817c7dc5d4209fa2d31c8a8d) では、G0はマージ済み（PR #37）、G1〜G5は未実装で、状態はExperimental/MANUAL_ONLYです。現在の状況は [PROJECT_STATE.md](../../PROJECT_STATE.md) を参照してください。
 
 - [タスクスキーマ](../../schemas/task.schema.json)のphase列挙（1〜4）とphase契約は、TDDサイクルでも意味的な検証でもありません。`retry.max_attempts`（最大3）は既に存在しますが、耐久性のあるTDD修復予算として実証されたものではありません。
-- [IndependentVerifier](../../orchestrator/core/verifier.py) の候補とJUnitの検査や無効化は、完全差分やTDDの時系列を証明しません。差分の扱いは追加・変更が中心で、削除・モード・リネーム・不明なbaseは今後のG1の課題です。完全差分が必要なタスクは引き渡しで拒否され、adapterは自動で再ディスパッチしません。[APPROVED_CONTAINER_LOOP.md](../operations/APPROVED_CONTAINER_LOOP.md) も参照してください。固定ソース: [スキーマ](https://github.com/moruku36/ai-engineering-factory/blob/8ef30734d041c7fa817c7dc5d4209fa2d31c8a8d/schemas/task.schema.json)、[検証器](https://github.com/moruku36/ai-engineering-factory/blob/8ef30734d041c7fa817c7dc5d4209fa2d31c8a8d/orchestrator/core/verifier.py)。
+- [IndependentVerifier](../../orchestrator/core/verifier.py) の候補とJUnitの検査や無効化は、完全差分やTDDの時系列を証明しません。差分の扱いは追加・変更が中心で、削除・モード・リネーム・不明なbaseは今後のG1の課題です。完全差分が必要なタスクは引き渡しで拒否され、adapterは自動で再ディスパッチしません。[APPROVED_CONTAINER_LOOP.md](../operations/APPROVED_CONTAINER_LOOP.md) も参照してください。固定ソース: [スキーマ](https://github.com/moruku36/ai-governance-control/blob/8ef30734d041c7fa817c7dc5d4209fa2d31c8a8d/schemas/task.schema.json)、[検証器](https://github.com/moruku36/ai-governance-control/blob/8ef30734d041c7fa817c7dc5d4209fa2d31c8a8d/orchestrator/core/verifier.py)。
 
 現在のセキュリティ境界、初期状態で無効な機能と実運用での制限、公開識別子はすべて変更しません。
 

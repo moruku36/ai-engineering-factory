@@ -6,7 +6,7 @@ phase: 1
 dependencies: []
 parallelizable: true
 role: "builder"
-repository: "https://github.com/moruku36/ai-engineering-factory"
+repository: "https://github.com/moruku36/ai-governance-control"
 base_ref: "main"
 branch: "task/smp-001"
 

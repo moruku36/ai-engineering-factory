@@ -50,7 +50,7 @@ class RealGitHubStatePublisher:
 
     def __init__(
         self,
-        repo_slug: str = "moruku36/ai-engineering-factory",
+        repo_slug: str = "moruku36/ai-governance-control",
         policy_engine: PolicyEngine | None = None,
         state_dir: Path | str | None = None,
     ):
