@@ -46,7 +46,7 @@ python -m orchestrator.cli demo --task-file tasks/templates/basic-task.yaml --wo
 
 [Project state](PROJECT_STATE.md) · [Architecture](ARCHITECTURE.md) · [Operations](OPERATIONS.md) · [Security](SECURITY.md) · [Quickstart](docs/getting-started.md) · [Adapters](docs/adapters/README.md) · [Compatibility](docs/compatibility/matrix.md) · [Handoff](docs/operations/HANDOFF_V01.md) · [Startup credentials (Japanese)](docs/security/runpod-startup-credential.ja.md)
 
-Future plans (not implemented): [Governance roadmap](docs/architecture/governance-roadmap.md) · [TDD research survey](docs/research/tdd-governance-2604.26615.md).
+Future plans (not implemented): [Governance roadmap](docs/architecture/governance-roadmap.md) · [TDD research survey](docs/research/tdd-governance-2604.26615.md) · [AI CI/CD prompt-injection survey](docs/research/gitinject-2606.09935.md).
 
 [MIT License](LICENSE)
 
